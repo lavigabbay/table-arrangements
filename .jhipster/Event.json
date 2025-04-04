@@ -1,0 +1,53 @@
+{
+  "annotations": {
+    "changelogDate": "20250404154458"
+  },
+  "applications": "*",
+  "fields": [
+    {
+      "fieldName": "eventName",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "eventOwners",
+      "fieldType": "String"
+    },
+    {
+      "fieldName": "groomParents",
+      "fieldType": "String"
+    },
+    {
+      "fieldName": "brideParents",
+      "fieldType": "String"
+    },
+    {
+      "fieldName": "weddingDate",
+      "fieldType": "LocalDate",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "receptionTime",
+      "fieldType": "Instant",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "weddingTime",
+      "fieldType": "Instant",
+      "fieldValidateRules": ["required"]
+    }
+  ],
+  "name": "Event",
+  "pagination": "pagination",
+  "relationships": [
+    {
+      "otherEntityField": "login",
+      "otherEntityName": "user",
+      "relationshipName": "user",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one",
+      "relationshipWithBuiltInEntity": true
+    }
+  ],
+  "searchEngine": "no"
+}

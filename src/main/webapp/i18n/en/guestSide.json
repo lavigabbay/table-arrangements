@@ -1,0 +1,10 @@
+{
+  "tableArrangmentsApp": {
+    "GuestSide": {
+      "null": "",
+      "GROOM": "GROOM",
+      "BRIDE": "BRIDE",
+      "BOTH": "BOTH"
+    }
+  }
+}

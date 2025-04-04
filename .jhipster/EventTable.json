@@ -1,0 +1,30 @@
+{
+  "annotations": {
+    "changelogDate": "20250402151046"
+  },
+  "applications": "*",
+  "fields": [
+    {
+      "fieldName": "tableNumber",
+      "fieldType": "Integer",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "maxSeats",
+      "fieldType": "Integer",
+      "fieldValidateRules": ["required"]
+    }
+  ],
+  "name": "EventTable",
+  "pagination": "pagination",
+  "relationships": [
+    {
+      "otherEntityField": "venueName",
+      "otherEntityName": "venueTable",
+      "relationshipName": "venue",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one"
+    }
+  ],
+  "searchEngine": "no"
+}

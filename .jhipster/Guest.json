@@ -1,0 +1,97 @@
+{
+  "annotations": {
+    "changelogDate": "20250404154459"
+  },
+  "applications": "*",
+  "fields": [
+    {
+      "fieldName": "lastNameAndFirstName",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "numberOfSeats",
+      "fieldType": "Integer",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "phone",
+      "fieldType": "String"
+    },
+    {
+      "fieldName": "nearStage",
+      "fieldType": "Boolean"
+    },
+    {
+      "fieldName": "status",
+      "fieldType": "GuestStatus",
+      "fieldValidateRules": ["required"],
+      "fieldValues": "CONFIRMED,WAITING_APPROVAL,NOT_INVITED,NOT_CONFIRMED,VIEW_ONLY"
+    },
+    {
+      "fieldName": "side",
+      "fieldType": "GuestSide",
+      "fieldValues": "GROOM,BRIDE,BOTH"
+    },
+    {
+      "fieldName": "relation",
+      "fieldType": "GuestRelation",
+      "fieldValidateRules": ["required"],
+      "fieldValues": "GROOM_FAMILY,BRIDE_FAMILY,GROOM_FRIENDS,BRIDE_FRIENDS,GROOM_WORK,BRIDE_WORK,GROOM_STUDY,BRIDE_STUDY,GROOM_ARMY,BRIDE_ARMY,BRIDE_MOTHER_FAMILY,BRIDE_FATHER_FAMILY,GROOM_MOTHER_FAMILY,GROOM_FATHER_FAMILY,GROOM_PARENTS_INVITEES,BRIDE_PARENTS_INVITEES"
+    },
+    {
+      "fieldName": "accessibility",
+      "fieldType": "Boolean",
+      "fieldValidateRules": ["required"]
+    }
+  ],
+  "name": "Guest",
+  "pagination": "pagination",
+  "relationships": [
+    {
+      "otherEntityField": "eventName",
+      "otherEntityName": "event",
+      "relationshipName": "event",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one"
+    },
+    {
+      "otherEntityField": "tableNumber",
+      "otherEntityName": "seatingTable",
+      "relationshipName": "table",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one"
+    },
+    {
+      "otherEntityField": "lastNameAndFirstName",
+      "otherEntityName": "guest",
+      "otherEntityRelationshipName": "avoidedBy",
+      "relationshipName": "avoidGuests",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-many"
+    },
+    {
+      "otherEntityField": "lastNameAndFirstName",
+      "otherEntityName": "guest",
+      "otherEntityRelationshipName": "preferredBy",
+      "relationshipName": "preferGuests",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-many"
+    },
+    {
+      "otherEntityName": "guest",
+      "otherEntityRelationshipName": "avoidGuests",
+      "relationshipName": "avoidedBy",
+      "relationshipSide": "right",
+      "relationshipType": "many-to-many"
+    },
+    {
+      "otherEntityName": "guest",
+      "otherEntityRelationshipName": "preferGuests",
+      "relationshipName": "preferredBy",
+      "relationshipSide": "right",
+      "relationshipType": "many-to-many"
+    }
+  ],
+  "searchEngine": "no"
+}

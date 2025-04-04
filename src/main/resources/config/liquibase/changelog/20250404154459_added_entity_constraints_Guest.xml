@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd
+                        http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd">
+    <!--
+        Added the constraints for entity Guest.
+    -->
+    <changeSet id="20250404154459-2" author="jhipster">
+
+        <addForeignKeyConstraint baseColumnNames="event_id"
+                                 baseTableName="guest"
+                                 constraintName="fk_guest__event_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="event"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="table_id"
+                                 baseTableName="guest"
+                                 constraintName="fk_guest__table_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="seating_table"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="guest_id"
+                                 baseTableName="rel_guest__avoid_guests"
+                                 constraintName="fk_rel_guest__avoid_guests__guest_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="guest"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="avoid_guests_id"
+                                 baseTableName="rel_guest__avoid_guests"
+                                 constraintName="fk_rel_guest__avoid_guests__avoid_guests_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="guest"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="guest_id"
+                                 baseTableName="rel_guest__prefer_guests"
+                                 constraintName="fk_rel_guest__prefer_guests__guest_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="guest"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="prefer_guests_id"
+                                 baseTableName="rel_guest__prefer_guests"
+                                 constraintName="fk_rel_guest__prefer_guests__prefer_guests_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="guest"
+                                 />
+    </changeSet>
+</databaseChangeLog>

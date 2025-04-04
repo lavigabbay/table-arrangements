@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd
+                        http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd">
+    <!--
+        Added the constraints for entity GuestTable.
+    -->
+    <changeSet id="20250308173522-2" author="jhipster">
+
+        <addForeignKeyConstraint baseColumnNames="venue_name_id"
+                                 baseTableName="guest_table"
+                                 constraintName="fk_guest_table__venue_name_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="venue_table"
+                                 />
+
+        <addForeignKeyConstraint baseColumnNames="event_table_id"
+                                 baseTableName="guest_table"
+                                 constraintName="fk_guest_table__event_table_id"
+                                 referencedColumnNames="id"
+                                 referencedTableName="event_table"
+                                 />
+    </changeSet>
+</databaseChangeLog>

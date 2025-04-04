@@ -1,0 +1,76 @@
+entity Event {
+  eventName String required
+  eventOwners String
+  groomParents String
+  brideParents String
+  weddingDate LocalDate required
+  receptionTime Instant required
+  weddingTime Instant required
+}
+
+entity SeatingTable {
+  tableNumber Integer required
+  maxSeats Integer required
+  nearStage Boolean
+}
+
+entity Guest {
+  lastNameAndFirstName String required
+  numberOfSeats Integer required
+  phone String
+  nearStage Boolean
+  status GuestStatus required
+  side GuestSide
+  relation GuestRelation required
+  accessibility Boolean required
+}
+
+enum GuestStatus {
+  CONFIRMED
+  WAITING_APPROVAL
+  NOT_INVITED
+  NOT_CONFIRMED
+  VIEW_ONLY
+}
+
+enum GuestRelation {
+  GROOM_FAMILY
+  BRIDE_FAMILY
+  GROOM_FRIENDS
+  BRIDE_FRIENDS
+  GROOM_WORK
+  BRIDE_WORK
+  GROOM_STUDY
+  BRIDE_STUDY
+  GROOM_ARMY
+  BRIDE_ARMY
+  BRIDE_MOTHER_FAMILY
+  BRIDE_FATHER_FAMILY
+  GROOM_MOTHER_FAMILY
+  GROOM_FATHER_FAMILY
+  GROOM_PARENTS_INVITEES
+  BRIDE_PARENTS_INVITEES
+}
+
+enum GuestSide {
+  GROOM
+  BRIDE
+  BOTH
+}
+
+relationship ManyToOne {
+  Event{user(login)} to User with builtInEntity
+  Guest{event(eventName)} to Event
+  SeatingTable{event(eventName)} to Event
+  Guest{table(tableNumber)} to SeatingTable
+}
+
+relationship ManyToMany {
+  Guest{avoidGuests(lastNameAndFirstName)} to Guest{avoidedBy}
+  Guest{preferGuests(lastNameAndFirstName)} to Guest{preferredBy}
+}
+
+
+paginate Guest with pagination
+paginate Event with pagination
+paginate SeatingTable with pagination

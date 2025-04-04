@@ -1,0 +1,26 @@
+{
+  "tableArrangmentsApp": {
+    "eventTable": {
+      "home": {
+        "title": "Event Tables",
+        "refreshListLabel": "Refresh list",
+        "createLabel": "Create a new Event Table",
+        "createOrEditLabel": "Create or edit a Event Table",
+        "notFound": "No Event Tables found"
+      },
+      "created": "A new Event Table is created with identifier { param }",
+      "updated": "A Event Table is updated with identifier { param }",
+      "deleted": "A Event Table is deleted with identifier { param }",
+      "delete": {
+        "question": "Are you sure you want to delete Event Table { id }?"
+      },
+      "detail": {
+        "title": "Event Table"
+      },
+      "id": "ID",
+      "tableNumber": "Table Number",
+      "maxSeats": "Max Seats",
+      "venue": "Venue"
+    }
+  }
+}

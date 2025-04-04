@@ -1,0 +1,80 @@
+{
+  "annotations": {
+    "changelogDate": "20250308173522"
+  },
+  "applications": "*",
+  "fields": [
+    {
+      "fieldName": "lastNameAndFirstName",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "numberOfSeats",
+      "fieldType": "Integer",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "phone",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "nearDanceFloor",
+      "fieldType": "Boolean"
+    },
+    {
+      "fieldName": "status",
+      "fieldType": "GuestStatus",
+      "fieldValidateRules": ["required"],
+      "fieldValues": "CONFIRMED,WAITING_APPROVAL,NOT_INVITED,NOT_CONFIRMED,VIEW_ONLY"
+    },
+    {
+      "fieldName": "side",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "relation",
+      "fieldType": "GuestRelation",
+      "fieldValidateRules": ["required"],
+      "fieldValues": "GROOM_FAMILY,BRIDE_FAMILY,GROOM_FRIENDS,BRIDE_FRIENDS,GROOM_WORK,BRIDE_WORK,GROOM_STUDY,BRIDE_STUDY,GROOM_ARMY,BRIDE_ARMY,BRIDE_MOTHER_FAMILY,BRIDE_FATHER_FAMILY,GROOM_MOTHER_FAMILY,GROOM_FATHER_FAMILY,GROOM_PARENTS_INVITEES,BRIDE_PARENTS_INVITEES"
+    },
+    {
+      "fieldName": "notWithId",
+      "fieldType": "Long"
+    },
+    {
+      "fieldName": "withId",
+      "fieldType": "Long"
+    },
+    {
+      "fieldName": "conditions",
+      "fieldType": "String"
+    },
+    {
+      "fieldName": "accessibility",
+      "fieldType": "Boolean",
+      "fieldValidateRules": ["required"]
+    }
+  ],
+  "name": "GuestTable",
+  "pagination": "pagination",
+  "relationships": [
+    {
+      "otherEntityField": "venueName",
+      "otherEntityName": "venueTable",
+      "relationshipName": "venueName",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one"
+    },
+    {
+      "otherEntityField": "tableNumber",
+      "otherEntityName": "eventTable",
+      "relationshipName": "eventTable",
+      "relationshipSide": "left",
+      "relationshipType": "many-to-one"
+    }
+  ],
+  "searchEngine": "no"
+}
