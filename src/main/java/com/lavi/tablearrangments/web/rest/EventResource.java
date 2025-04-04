@@ -1,7 +1,10 @@
 package com.lavi.tablearrangments.web.rest;
 
 import com.lavi.tablearrangments.domain.Event;
+import com.lavi.tablearrangments.domain.User;
 import com.lavi.tablearrangments.repository.EventRepository;
+import com.lavi.tablearrangments.repository.UserRepository;
+import com.lavi.tablearrangments.security.SecurityUtils;
 import com.lavi.tablearrangments.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -24,9 +27,6 @@ import tech.jhipster.web.util.HeaderUtil;
 import tech.jhipster.web.util.PaginationUtil;
 import tech.jhipster.web.util.ResponseUtil;
 
-/**
- * REST controller for managing {@link com.lavi.tablearrangments.domain.Event}.
- */
 @RestController
 @RequestMapping("/api/events")
 @Transactional
@@ -40,40 +40,30 @@ public class EventResource {
     private String applicationName;
 
     private final EventRepository eventRepository;
+    private final UserRepository userRepository;
 
-    public EventResource(EventRepository eventRepository) {
+    public EventResource(EventRepository eventRepository, UserRepository userRepository) {
         this.eventRepository = eventRepository;
+        this.userRepository = userRepository;
     }
 
-    /**
-     * {@code POST  /events} : Create a new event.
-     *
-     * @param event the event to create.
-     * @return the {@link ResponseEntity} with status {@code 201 (Created)} and with body the new event, or with status {@code 400 (Bad Request)} if the event has already an ID.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PostMapping("")
     public ResponseEntity<Event> createEvent(@Valid @RequestBody Event event) throws URISyntaxException {
         LOG.debug("REST request to save Event : {}", event);
         if (event.getId() != null) {
             throw new BadRequestAlertException("A new event cannot already have an ID", ENTITY_NAME, "idexists");
         }
+
+        // 🟢 שיוך אוטומטי של המשתמש המחובר
+        Optional<User> currentUser = SecurityUtils.getCurrentUserLogin().flatMap(userRepository::findOneByLogin);
+        event.setUser(currentUser.orElseThrow(() -> new BadRequestAlertException("Current user not found", ENTITY_NAME, "usernotfound")));
+
         event = eventRepository.save(event);
         return ResponseEntity.created(new URI("/api/events/" + event.getId()))
             .headers(HeaderUtil.createEntityCreationAlert(applicationName, true, ENTITY_NAME, event.getId().toString()))
             .body(event);
     }
 
-    /**
-     * {@code PUT  /events/:id} : Updates an existing event.
-     *
-     * @param id the id of the event to save.
-     * @param event the event to update.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated event,
-     * or with status {@code 400 (Bad Request)} if the event is not valid,
-     * or with status {@code 500 (Internal Server Error)} if the event couldn't be updated.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PutMapping("/{id}")
     public ResponseEntity<Event> updateEvent(@PathVariable(value = "id", required = false) final Long id, @Valid @RequestBody Event event)
         throws URISyntaxException {
@@ -95,17 +85,6 @@ public class EventResource {
             .body(event);
     }
 
-    /**
-     * {@code PATCH  /events/:id} : Partial updates given fields of an existing event, field will ignore if it is null
-     *
-     * @param id the id of the event to save.
-     * @param event the event to update.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated event,
-     * or with status {@code 400 (Bad Request)} if the event is not valid,
-     * or with status {@code 404 (Not Found)} if the event is not found,
-     * or with status {@code 500 (Internal Server Error)} if the event couldn't be updated.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PatchMapping(value = "/{id}", consumes = { "application/json", "application/merge-patch+json" })
     public ResponseEntity<Event> partialUpdateEvent(
         @PathVariable(value = "id", required = false) final Long id,
@@ -158,13 +137,6 @@ public class EventResource {
         );
     }
 
-    /**
-     * {@code GET  /events} : get all the events.
-     *
-     * @param pageable the pagination information.
-     * @param eagerload flag to eager load entities from relationships (This is applicable for many-to-many).
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and the list of events in body.
-     */
     @GetMapping("")
     public ResponseEntity<List<Event>> getAllEvents(
         @org.springdoc.core.annotations.ParameterObject Pageable pageable,
@@ -176,12 +148,6 @@ public class EventResource {
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
 
-    /**
-     * {@code GET  /events/:id} : get the "id" event.
-     *
-     * @param id the id of the event to retrieve.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the event, or with status {@code 404 (Not Found)}.
-     */
     @GetMapping("/{id}")
     public ResponseEntity<Event> getEvent(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Event : {}", id);
@@ -189,12 +155,6 @@ public class EventResource {
         return ResponseUtil.wrapOrNotFound(event);
     }
 
-    /**
-     * {@code DELETE  /events/:id} : delete the "id" event.
-     *
-     * @param id the id of the event to delete.
-     * @return the {@link ResponseEntity} with status {@code 204 (NO_CONTENT)}.
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteEvent(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Event : {}", id);

@@ -26,6 +26,9 @@ public interface SeatingTableRepository extends JpaRepository<SeatingTable, Long
         return this.findAllWithToOneRelationships(pageable);
     }
 
+    @Query("select seatingTable from SeatingTable seatingTable where seatingTable.event.user.login = ?#{authentication.name}")
+    List<SeatingTable> findByUserIsCurrentUser();
+
     @Query(
         value = "select seatingTable from SeatingTable seatingTable left join fetch seatingTable.event",
         countQuery = "select count(seatingTable) from SeatingTable seatingTable"
