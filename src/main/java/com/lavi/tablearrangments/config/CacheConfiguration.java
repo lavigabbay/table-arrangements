@@ -41,6 +41,18 @@ public class CacheConfiguration {
             createCache(cm, com.lavi.tablearrangments.repository.UserRepository.USERS_BY_LOGIN_CACHE);
             createCache(cm, com.lavi.tablearrangments.repository.UserRepository.USERS_BY_EMAIL_CACHE);
             createCache(cm, com.lavi.tablearrangments.domain.Authority.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.GuestTable.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.VenueTable.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.VenueTable.class.getName() + ".guests");
+            createCache(cm, com.lavi.tablearrangments.domain.VenueTable.class.getName() + ".guestTables");
+            createCache(cm, com.lavi.tablearrangments.domain.EventTable.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.Event.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.Guest.class.getName());
+            createCache(cm, com.lavi.tablearrangments.domain.Guest.class.getName() + ".avoidGuests");
+            createCache(cm, com.lavi.tablearrangments.domain.Guest.class.getName() + ".preferGuests");
+            createCache(cm, com.lavi.tablearrangments.domain.Guest.class.getName() + ".avoidedBies");
+            createCache(cm, com.lavi.tablearrangments.domain.Guest.class.getName() + ".preferredBies");
+            createCache(cm, com.lavi.tablearrangments.domain.SeatingTable.class.getName());
             // jhipster-needle-ehcache-add-entry
         };
     }
