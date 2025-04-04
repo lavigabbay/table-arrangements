@@ -30,6 +30,12 @@ public interface GuestRepository extends GuestRepositoryWithBagRelationships, Jp
     }
 
     @Query(
+        value = "select guest from Guest guest left join fetch guest.event where guest.event.user.login = ?#{authentication.name}",
+        countQuery = "select count(guest) from Guest guest where guest.event.user.login = ?#{authentication.name}"
+    )
+    Page<Guest> findAllByEventUserIsCurrentUser(Pageable pageable);
+
+    @Query(
         value = "select guest from Guest guest left join fetch guest.event left join fetch guest.table",
         countQuery = "select count(guest) from Guest guest"
     )

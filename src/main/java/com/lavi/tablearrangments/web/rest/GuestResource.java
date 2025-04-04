@@ -2,6 +2,7 @@ package com.lavi.tablearrangments.web.rest;
 
 import com.lavi.tablearrangments.domain.Guest;
 import com.lavi.tablearrangments.repository.GuestRepository;
+import com.lavi.tablearrangments.security.SecurityUtils;
 import com.lavi.tablearrangments.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -173,13 +174,8 @@ public class GuestResource {
         @org.springdoc.core.annotations.ParameterObject Pageable pageable,
         @RequestParam(name = "eagerload", required = false, defaultValue = "true") boolean eagerload
     ) {
-        LOG.debug("REST request to get a page of Guests");
-        Page<Guest> page;
-        if (eagerload) {
-            page = guestRepository.findAllWithEagerRelationships(pageable);
-        } else {
-            page = guestRepository.findAll(pageable);
-        }
+        LOG.debug("REST request to get a page of Guests by current user");
+        Page<Guest> page = guestRepository.findAllByEventUserIsCurrentUser(pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
@@ -194,6 +190,11 @@ public class GuestResource {
     public ResponseEntity<Guest> getGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Guest : {}", id);
         Optional<Guest> guest = guestRepository.findOneWithEagerRelationships(id);
+
+        if (guest.isEmpty() || !guest.get().getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
+            return ResponseEntity.status(403).build(); // 🛡 חסימת גישה
+        }
+
         return ResponseUtil.wrapOrNotFound(guest);
     }
 
@@ -206,6 +207,12 @@ public class GuestResource {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Guest : {}", id);
+        Optional<Guest> guest = guestRepository.findById(id);
+
+        if (guest.isEmpty() || !guest.get().getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
+            return ResponseEntity.status(403).build(); // 🛡 הגנה
+        }
+
         guestRepository.deleteById(id);
         return ResponseEntity.noContent()
             .headers(HeaderUtil.createEntityDeletionAlert(applicationName, true, ENTITY_NAME, id.toString()))

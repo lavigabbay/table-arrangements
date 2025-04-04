@@ -171,12 +171,7 @@ public class EventResource {
         @RequestParam(name = "eagerload", required = false, defaultValue = "true") boolean eagerload
     ) {
         LOG.debug("REST request to get a page of Events");
-        Page<Event> page;
-        if (eagerload) {
-            page = eventRepository.findAllWithEagerRelationships(pageable);
-        } else {
-            page = eventRepository.findAll(pageable);
-        }
+        Page<Event> page = eventRepository.findAllByUserIsCurrentUser(pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }

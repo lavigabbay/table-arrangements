@@ -161,12 +161,7 @@ public class SeatingTableResource {
         @RequestParam(name = "eagerload", required = false, defaultValue = "true") boolean eagerload
     ) {
         LOG.debug("REST request to get a page of SeatingTables");
-        Page<SeatingTable> page;
-        if (eagerload) {
-            page = seatingTableRepository.findAllWithEagerRelationships(pageable);
-        } else {
-            page = seatingTableRepository.findAll(pageable);
-        }
+        Page<SeatingTable> page = seatingTableRepository.findAllByEventUserIsCurrentUser(pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
