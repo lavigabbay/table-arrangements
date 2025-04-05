@@ -2,6 +2,7 @@ import { type Ref, defineComponent, inject, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import GuestService from './guest.service';
+import SeatingTableService from '@/entities/seating-table/seating-table.service';
 import { type IGuest } from '@/shared/model/guest.model';
 import { useAlertService } from '@/shared/alert/alert.service';
 
@@ -11,6 +12,7 @@ export default defineComponent({
   setup() {
     const { t: t$ } = useI18n();
     const guestService = inject('guestService', () => new GuestService());
+    const seatingTableService = inject('seatingTableService', () => new SeatingTableService());
     const alertService = inject('alertService', () => useAlertService(), true);
 
     const itemsPerPage = ref(20);
@@ -19,10 +21,9 @@ export default defineComponent({
     const propOrder = ref('id');
     const reverse = ref(false);
     const totalItems = ref(0);
+    const isFetching = ref(false);
 
     const guests: Ref<IGuest[]> = ref([]);
-
-    const isFetching = ref(false);
 
     const clear = () => {
       page.value = 1;
@@ -94,21 +95,40 @@ export default defineComponent({
       propOrder.value = newOrder;
     };
 
-    // Whenever order changes, reset the pagination
     watch([propOrder, reverse], async () => {
       if (page.value === 1) {
-        // first page, retrieve new data
         await retrieveGuests();
       } else {
-        // reset the pagination
         clear();
       }
     });
 
-    // Whenever page changes, switch to the new page.
     watch(page, async () => {
       await retrieveGuests();
     });
+
+    // 🎯 פונקציה שממיינת רנדומלית אורחים לשולחנות
+    const sortGuestsRandomly = async () => {
+      try {
+        const tableResponse = await seatingTableService().retrieve();
+        const tables = tableResponse.data;
+        if (!tables.length) {
+          alertService.showInfo('לא נמצאו שולחנות זמינים.');
+          return;
+        }
+
+        for (const guest of guests.value) {
+          const randomTable = tables[Math.floor(Math.random() * tables.length)];
+          guest.table = randomTable;
+          await guestService().update(guest); // שמירה
+        }
+
+        alertService.showInfo('המיון הרנדומלי הושלם בהצלחה.');
+        await retrieveGuests();
+      } catch (error) {
+        alertService.showHttpError(error.response);
+      }
+    };
 
     return {
       guests,
@@ -129,6 +149,7 @@ export default defineComponent({
       totalItems,
       changeOrder,
       t$,
+      sortGuestsRandomly,
     };
   },
 });
