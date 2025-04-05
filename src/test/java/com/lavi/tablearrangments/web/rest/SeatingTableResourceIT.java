@@ -49,6 +49,9 @@ class SeatingTableResourceIT {
     private static final Boolean DEFAULT_NEAR_STAGE = false;
     private static final Boolean UPDATED_NEAR_STAGE = true;
 
+    private static final Boolean DEFAULT_ACCESSIBILITY = false;
+    private static final Boolean UPDATED_ACCESSIBILITY = true;
+
     private static final String ENTITY_API_URL = "/api/seating-tables";
     private static final String ENTITY_API_URL_ID = ENTITY_API_URL + "/{id}";
 
@@ -81,7 +84,11 @@ class SeatingTableResourceIT {
      * if they test an entity which requires the current entity.
      */
     public static SeatingTable createEntity() {
-        return new SeatingTable().tableNumber(DEFAULT_TABLE_NUMBER).maxSeats(DEFAULT_MAX_SEATS).nearStage(DEFAULT_NEAR_STAGE);
+        return new SeatingTable()
+            .tableNumber(DEFAULT_TABLE_NUMBER)
+            .maxSeats(DEFAULT_MAX_SEATS)
+            .nearStage(DEFAULT_NEAR_STAGE)
+            .accessibility(DEFAULT_ACCESSIBILITY);
     }
 
     /**
@@ -91,7 +98,11 @@ class SeatingTableResourceIT {
      * if they test an entity which requires the current entity.
      */
     public static SeatingTable createUpdatedEntity() {
-        return new SeatingTable().tableNumber(UPDATED_TABLE_NUMBER).maxSeats(UPDATED_MAX_SEATS).nearStage(UPDATED_NEAR_STAGE);
+        return new SeatingTable()
+            .tableNumber(UPDATED_TABLE_NUMBER)
+            .maxSeats(UPDATED_MAX_SEATS)
+            .nearStage(UPDATED_NEAR_STAGE)
+            .accessibility(UPDATED_ACCESSIBILITY);
     }
 
     @BeforeEach
@@ -192,7 +203,8 @@ class SeatingTableResourceIT {
             .andExpect(jsonPath("$.[*].id").value(hasItem(seatingTable.getId().intValue())))
             .andExpect(jsonPath("$.[*].tableNumber").value(hasItem(DEFAULT_TABLE_NUMBER)))
             .andExpect(jsonPath("$.[*].maxSeats").value(hasItem(DEFAULT_MAX_SEATS)))
-            .andExpect(jsonPath("$.[*].nearStage").value(hasItem(DEFAULT_NEAR_STAGE)));
+            .andExpect(jsonPath("$.[*].nearStage").value(hasItem(DEFAULT_NEAR_STAGE)))
+            .andExpect(jsonPath("$.[*].accessibility").value(hasItem(DEFAULT_ACCESSIBILITY)));
     }
 
     @SuppressWarnings({ "unchecked" })
@@ -226,7 +238,8 @@ class SeatingTableResourceIT {
             .andExpect(jsonPath("$.id").value(seatingTable.getId().intValue()))
             .andExpect(jsonPath("$.tableNumber").value(DEFAULT_TABLE_NUMBER))
             .andExpect(jsonPath("$.maxSeats").value(DEFAULT_MAX_SEATS))
-            .andExpect(jsonPath("$.nearStage").value(DEFAULT_NEAR_STAGE));
+            .andExpect(jsonPath("$.nearStage").value(DEFAULT_NEAR_STAGE))
+            .andExpect(jsonPath("$.accessibility").value(DEFAULT_ACCESSIBILITY));
     }
 
     @Test
@@ -248,7 +261,11 @@ class SeatingTableResourceIT {
         SeatingTable updatedSeatingTable = seatingTableRepository.findById(seatingTable.getId()).orElseThrow();
         // Disconnect from session so that the updates on updatedSeatingTable are not directly saved in db
         em.detach(updatedSeatingTable);
-        updatedSeatingTable.tableNumber(UPDATED_TABLE_NUMBER).maxSeats(UPDATED_MAX_SEATS).nearStage(UPDATED_NEAR_STAGE);
+        updatedSeatingTable
+            .tableNumber(UPDATED_TABLE_NUMBER)
+            .maxSeats(UPDATED_MAX_SEATS)
+            .nearStage(UPDATED_NEAR_STAGE)
+            .accessibility(UPDATED_ACCESSIBILITY);
 
         restSeatingTableMockMvc
             .perform(
@@ -328,7 +345,7 @@ class SeatingTableResourceIT {
         SeatingTable partialUpdatedSeatingTable = new SeatingTable();
         partialUpdatedSeatingTable.setId(seatingTable.getId());
 
-        partialUpdatedSeatingTable.tableNumber(UPDATED_TABLE_NUMBER).nearStage(UPDATED_NEAR_STAGE);
+        partialUpdatedSeatingTable.tableNumber(UPDATED_TABLE_NUMBER).maxSeats(UPDATED_MAX_SEATS);
 
         restSeatingTableMockMvc
             .perform(
@@ -359,7 +376,11 @@ class SeatingTableResourceIT {
         SeatingTable partialUpdatedSeatingTable = new SeatingTable();
         partialUpdatedSeatingTable.setId(seatingTable.getId());
 
-        partialUpdatedSeatingTable.tableNumber(UPDATED_TABLE_NUMBER).maxSeats(UPDATED_MAX_SEATS).nearStage(UPDATED_NEAR_STAGE);
+        partialUpdatedSeatingTable
+            .tableNumber(UPDATED_TABLE_NUMBER)
+            .maxSeats(UPDATED_MAX_SEATS)
+            .nearStage(UPDATED_NEAR_STAGE)
+            .accessibility(UPDATED_ACCESSIBILITY);
 
         restSeatingTableMockMvc
             .perform(

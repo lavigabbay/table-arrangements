@@ -35,6 +35,22 @@ public class SeatingTable implements Serializable {
     @JsonIgnoreProperties(value = { "user" }, allowSetters = true)
     private Event event;
 
+    @Column(name = "accessibility")
+    private Boolean accessibility;
+
+    public Boolean getAccessibility() {
+        return this.accessibility;
+    }
+
+    public SeatingTable accessibility(Boolean accessibility) {
+        this.setAccessibility(accessibility);
+        return this;
+    }
+
+    public void setAccessibility(Boolean accessibility) {
+        this.accessibility = accessibility;
+    }
+
     // jhipster-needle-entity-add-field - JHipster will add fields here
 
     public Long getId() {

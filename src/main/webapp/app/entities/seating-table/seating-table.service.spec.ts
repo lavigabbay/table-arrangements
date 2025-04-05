@@ -28,7 +28,7 @@ describe('Service Tests', () => {
 
     beforeEach(() => {
       service = new SeatingTableService();
-      elemDefault = new SeatingTable(123, 0, 0, false);
+      elemDefault = new SeatingTable(123, 0, 0, false, false);
     });
 
     describe('Service methods', () => {
@@ -73,7 +73,7 @@ describe('Service Tests', () => {
       });
 
       it('should update a SeatingTable', async () => {
-        const returnedFromService = { tableNumber: 1, maxSeats: 1, nearStage: true, ...elemDefault };
+        const returnedFromService = { tableNumber: 1, maxSeats: 1, nearStage: true, accessibility: true, ...elemDefault };
 
         const expected = { ...returnedFromService };
         axiosStub.put.resolves({ data: returnedFromService });
@@ -95,7 +95,7 @@ describe('Service Tests', () => {
       });
 
       it('should partial update a SeatingTable', async () => {
-        const patchObject = { tableNumber: 1, maxSeats: 1, ...new SeatingTable() };
+        const patchObject = { maxSeats: 1, accessibility: true, ...new SeatingTable() };
         const returnedFromService = Object.assign(patchObject, elemDefault);
 
         const expected = { ...returnedFromService };
@@ -118,7 +118,7 @@ describe('Service Tests', () => {
       });
 
       it('should return a list of SeatingTable', async () => {
-        const returnedFromService = { tableNumber: 1, maxSeats: 1, nearStage: true, ...elemDefault };
+        const returnedFromService = { tableNumber: 1, maxSeats: 1, nearStage: true, accessibility: true, ...elemDefault };
         const expected = { ...returnedFromService };
         axiosStub.get.resolves([returnedFromService]);
         return service.retrieve({ sort: {}, page: 0, size: 10 }).then(res => {

@@ -21,6 +21,7 @@
       "tableNumber": "Table Number",
       "maxSeats": "Max Seats",
       "nearStage": "Near Stage",
+      "accessibility": "Accessibility",
       "event": "Event"
     }
   }

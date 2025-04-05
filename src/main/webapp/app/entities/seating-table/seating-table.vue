@@ -44,6 +44,10 @@
               <span v-text="t$('tableArrangmentsApp.seatingTable.nearStage')"></span>
               <jhi-sort-indicator :current-order="propOrder" :reverse="reverse" :field-name="'nearStage'"></jhi-sort-indicator>
             </th>
+            <th scope="row" @click="changeOrder('accessibility')">
+              <span v-text="t$('tableArrangmentsApp.seatingTable.accessibility')"></span>
+              <jhi-sort-indicator :current-order="propOrder" :reverse="reverse" :field-name="'accessibility'"></jhi-sort-indicator>
+            </th>
             <th scope="row" @click="changeOrder('event.eventName')">
               <span v-text="t$('tableArrangmentsApp.seatingTable.event')"></span>
               <jhi-sort-indicator :current-order="propOrder" :reverse="reverse" :field-name="'event.eventName'"></jhi-sort-indicator>
@@ -61,6 +65,7 @@
             <td>{{ seatingTable.tableNumber }}</td>
             <td>{{ seatingTable.maxSeats }}</td>
             <td>{{ seatingTable.nearStage }}</td>
+            <td>{{ seatingTable.accessibility }}</td>
             <td>
               <div v-if="seatingTable.event">
                 <router-link :to="{ name: 'EventView', params: { eventId: seatingTable.event.id } }">{{

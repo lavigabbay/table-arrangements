@@ -66,6 +66,7 @@ export default defineComponent({
         integer: validations.integer(t$('entity.validation.number').toString()),
       },
       nearStage: {},
+      accessibility: {},
       event: {},
     };
     const v$ = useVuelidate(validationRules, seatingTable as any);

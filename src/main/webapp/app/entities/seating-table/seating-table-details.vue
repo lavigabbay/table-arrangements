@@ -25,6 +25,12 @@
             <span>{{ seatingTable.nearStage }}</span>
           </dd>
           <dt>
+            <span v-text="t$('tableArrangmentsApp.seatingTable.accessibility')"></span>
+          </dt>
+          <dd>
+            <span>{{ seatingTable.accessibility }}</span>
+          </dd>
+          <dt>
             <span v-text="t$('tableArrangmentsApp.seatingTable.event')"></span>
           </dt>
           <dd>

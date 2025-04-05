@@ -23,6 +23,9 @@
             <column name="near_stage" type="boolean">
                 <constraints nullable="true" />
             </column>
+            <column name="accessibility" type="boolean">
+                <constraints nullable="true" />
+            </column>
             <column name="event_id" type="bigint">
                 <constraints nullable="true" />
             </column>
@@ -50,6 +53,7 @@
             <column name="table_number" type="numeric"/>
             <column name="max_seats" type="numeric"/>
             <column name="near_stage" type="boolean"/>
+            <column name="accessibility" type="boolean"/>
             <!-- jhipster-needle-liquibase-add-loadcolumn - JHipster (and/or extensions) can add load columns here -->
         </loadData>
     </changeSet>

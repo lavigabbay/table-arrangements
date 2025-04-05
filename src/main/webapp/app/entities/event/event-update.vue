@@ -134,6 +134,19 @@
               <small class="form-text text-danger" v-for="error of v$.weddingTime.$errors" :key="error.$uid">{{ error.$message }}</small>
             </div>
           </div>
+          <div class="form-group">
+            <label class="form-control-label" v-text="t$('tableArrangmentsApp.event.user')" for="event-user"></label>
+            <select class="form-control" id="event-user" data-cy="user" name="user" v-model="event.user">
+              <option :value="null"></option>
+              <option
+                :value="event.user && userOption.id === event.user.id ? event.user : userOption"
+                v-for="userOption in users"
+                :key="userOption.id"
+              >
+                {{ userOption.login }}
+              </option>
+            </select>
+          </div>
         </div>
         <div>
           <button type="button" id="cancel-save" data-cy="entityCreateCancelButton" class="btn btn-secondary" @click="previousState()">

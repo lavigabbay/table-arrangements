@@ -49,7 +49,8 @@ public class SeatingTableAsserts {
             .as("Verify SeatingTable relevant properties")
             .satisfies(a -> assertThat(a.getTableNumber()).as("check tableNumber").isEqualTo(expected.getTableNumber()))
             .satisfies(a -> assertThat(a.getMaxSeats()).as("check maxSeats").isEqualTo(expected.getMaxSeats()))
-            .satisfies(a -> assertThat(a.getNearStage()).as("check nearStage").isEqualTo(expected.getNearStage()));
+            .satisfies(a -> assertThat(a.getNearStage()).as("check nearStage").isEqualTo(expected.getNearStage()))
+            .satisfies(a -> assertThat(a.getAccessibility()).as("check accessibility").isEqualTo(expected.getAccessibility()));
     }
 
     /**

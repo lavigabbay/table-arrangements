@@ -4,14 +4,14 @@
       <span v-text="t$('tableArrangmentsApp.guest.home.title')" id="guest-heading"></span>
       <div class="d-flex justify-content-end">
         <button class="btn btn-info mr-2" @click="handleSyncList" :disabled="isFetching">
-          <font-awesome-icon icon="sync" :spin="isFetching"></font-awesome-icon>
+          <font-awesome-icon icon="sync" :spin="isFetching" />
           <span v-text="t$('tableArrangmentsApp.guest.home.refreshListLabel')"></span>
         </button>
 
-        <!-- כפתור מיון רנדומלי -->
-        <button class="btn btn-outline-primary mr-2" @click="sortGuestsRandomly" :disabled="isFetching">
-          <font-awesome-icon icon="random" />
-          מיין אורחים רנדומלית
+        <!-- כפתור מיון לפי אילוצים -->
+        <button class="btn btn-outline-success mr-2" @click="assignGuestsWithConstraints" :disabled="isFetching">
+          <font-awesome-icon icon="project-diagram" />
+          מיין אורחים לפי אילוצים
         </button>
 
         <router-link :to="{ name: 'GuestCreate' }" custom v-slot="{ navigate }">
@@ -21,7 +21,7 @@
             data-cy="entityCreateButton"
             class="btn btn-primary jh-create-entity create-guest"
           >
-            <font-awesome-icon icon="plus"></font-awesome-icon>
+            <font-awesome-icon icon="plus" />
             <span v-text="t$('tableArrangmentsApp.guest.home.createLabel')"></span>
           </button>
         </router-link>

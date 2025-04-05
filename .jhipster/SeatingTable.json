@@ -17,6 +17,10 @@
     {
       "fieldName": "nearStage",
       "fieldType": "Boolean"
+    },
+    {
+      "fieldName": "accessibility",
+      "fieldType": "Boolean"
     }
   ],
   "name": "SeatingTable",

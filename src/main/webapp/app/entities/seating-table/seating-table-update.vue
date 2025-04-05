@@ -65,6 +65,22 @@
             />
           </div>
           <div class="form-group">
+            <label
+              class="form-control-label"
+              v-text="t$('tableArrangmentsApp.seatingTable.accessibility')"
+              for="seating-table-accessibility"
+            ></label>
+            <input
+              type="checkbox"
+              class="form-check"
+              name="accessibility"
+              id="seating-table-accessibility"
+              data-cy="accessibility"
+              :class="{ valid: !v$.accessibility.$invalid, invalid: v$.accessibility.$invalid }"
+              v-model="v$.accessibility.$model"
+            />
+          </div>
+          <div class="form-group">
             <label class="form-control-label" v-text="t$('tableArrangmentsApp.seatingTable.event')" for="seating-table-event"></label>
             <select class="form-control" id="seating-table-event" data-cy="event" name="event" v-model="seatingTable.event">
               <option :value="null"></option>

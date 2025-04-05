@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 
 import GuestService from './guest.service';
 import SeatingTableService from '@/entities/seating-table/seating-table.service';
+import { GuestAssignmentService } from './guest-assignment.service';
 import { type IGuest } from '@/shared/model/guest.model';
 import { useAlertService } from '@/shared/alert/alert.service';
 
@@ -107,23 +108,12 @@ export default defineComponent({
       await retrieveGuests();
     });
 
-    // 🎯 פונקציה שממיינת רנדומלית אורחים לשולחנות
-    const sortGuestsRandomly = async () => {
+    // 🧠 פונקציה למיון לפי אילוצים
+    const assignGuestsWithConstraints = async () => {
       try {
-        const tableResponse = await seatingTableService().retrieve();
-        const tables = tableResponse.data;
-        if (!tables.length) {
-          alertService.showInfo('לא נמצאו שולחנות זמינים.');
-          return;
-        }
-
-        for (const guest of guests.value) {
-          const randomTable = tables[Math.floor(Math.random() * tables.length)];
-          guest.table = randomTable;
-          await guestService().update(guest); // שמירה
-        }
-
-        alertService.showInfo('המיון הרנדומלי הושלם בהצלחה.');
+        const service = new GuestAssignmentService();
+        await service.assignGuestsToTables();
+        alertService.showInfo('המיון לפי אילוצים הושלם בהצלחה.');
         await retrieveGuests();
       } catch (error) {
         alertService.showHttpError(error.response);
@@ -149,7 +139,7 @@ export default defineComponent({
       totalItems,
       changeOrder,
       t$,
-      sortGuestsRandomly,
+      assignGuestsWithConstraints,
     };
   },
 });

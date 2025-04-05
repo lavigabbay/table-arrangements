@@ -5,6 +5,7 @@ export interface ISeatingTable {
   tableNumber?: number;
   maxSeats?: number;
   nearStage?: boolean | null;
+  accessibility?: boolean | null;
   event?: IEvent | null;
 }
 
@@ -14,8 +15,10 @@ export class SeatingTable implements ISeatingTable {
     public tableNumber?: number,
     public maxSeats?: number,
     public nearStage?: boolean | null,
+    public accessibility?: boolean | null,
     public event?: IEvent | null,
   ) {
     this.nearStage = this.nearStage ?? false;
+    this.accessibility = this.accessibility ?? false;
   }
 }
