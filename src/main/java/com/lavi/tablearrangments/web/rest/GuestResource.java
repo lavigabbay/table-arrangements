@@ -189,13 +189,13 @@ public class GuestResource {
     @GetMapping("/{id}")
     public ResponseEntity<Guest> getGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Guest : {}", id);
-        Optional<Guest> guest = guestRepository.findOneWithEagerRelationships(id);
+        Guest guest = guestRepository.findOneWithEagerRelationships(id).orElseThrow();
 
-        if (guest.isEmpty() || !guest.get().getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
-            return ResponseEntity.status(403).build(); // 🛡 חסימת גישה
+        if (!guest.getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
+            return ResponseEntity.status(403).build();
         }
 
-        return ResponseUtil.wrapOrNotFound(guest);
+        return ResponseUtil.wrapOrNotFound(Optional.of(guest));
     }
 
     /**
@@ -207,10 +207,10 @@ public class GuestResource {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Guest : {}", id);
-        Optional<Guest> guest = guestRepository.findById(id);
+        Guest guest = guestRepository.findById(id).orElseThrow();
 
-        if (guest.isEmpty() || !guest.get().getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
-            return ResponseEntity.status(403).build(); // 🛡 הגנה
+        if (!guest.getEvent().getUser().getLogin().equals(SecurityUtils.getCurrentUserLogin().orElse(""))) {
+            return ResponseEntity.status(403).build();
         }
 
         guestRepository.deleteById(id);

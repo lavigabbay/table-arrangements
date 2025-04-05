@@ -1,30 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <databaseChangeLog
-    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
-    <property name="now" value="now()" dbms="mysql"/>
-    <property name="floatType" value="float" dbms="mysql"/>
-    <property name="clobType" value="clob" dbms="mysql"/>
-    <property name="blobType" value="longblob" dbms="mysql"/>
-    <property name="uuidType" value="varchar(36)" dbms="mysql"/>
-    <property name="datetimeType" value="datetime(6)" dbms="mysql"/>
-    <property name="timeType" value="time(6)" dbms="mysql"/>
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <include file="config/liquibase/changelog/00000000000000_initial_schema.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250308173522_added_entity_GuestTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250308173523_added_entity_VenueTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250402151046_added_entity_EventTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154458_added_entity_Event.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154459_added_entity_Guest.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154500_added_entity_SeatingTable.xml" relativeToChangelogFile="false"/>
-    <!-- jhipster-needle-liquibase-add-changelog - JHipster will add liquibase changelogs here -->
-    <include file="config/liquibase/changelog/20250308173522_added_entity_constraints_GuestTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250308173523_added_entity_constraints_VenueTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250402151046_added_entity_constraints_EventTable.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154458_added_entity_constraints_Event.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154459_added_entity_constraints_Guest.xml" relativeToChangelogFile="false"/>
-    <include file="config/liquibase/changelog/20250404154500_added_entity_constraints_SeatingTable.xml" relativeToChangelogFile="false"/>
-    <!-- jhipster-needle-liquibase-add-constraints-changelog - JHipster will add liquibase constraints changelogs here -->
-    <!-- jhipster-needle-liquibase-add-incremental-changelog - JHipster will add incremental liquibase changelogs here -->
+  <property name="now" value="now()" dbms="mysql"/>
+  <property name="floatType" value="float" dbms="mysql"/>
+  <property name="clobType" value="clob" dbms="mysql"/>
+  <property name="blobType" value="longblob" dbms="mysql"/>
+  <property name="uuidType" value="varchar(36)" dbms="mysql"/>
+  <property name="datetimeType" value="datetime(6)" dbms="mysql"/>
+  <property name="timeType" value="time(6)" dbms="mysql"/>
+
+  <include file="config/liquibase/changelog/00000000000000_initial_schema.xml" relativeToChangelogFile="false"/>
+  <include file="config/liquibase/changelog/20250404154458_added_entity_Event.xml" relativeToChangelogFile="false"/>
+  <include file="config/liquibase/changelog/20250404154459_added_entity_Guest.xml" relativeToChangelogFile="false"/>
+  <include file="config/liquibase/changelog/20250404154500_added_entity_SeatingTable.xml" relativeToChangelogFile="false"/>
+  <!-- jhipster-needle-liquibase-add-changelog - JHipster will add liquibase changelogs here -->
+  <include file="config/liquibase/changelog/20250404154458_added_entity_constraints_Event.xml" relativeToChangelogFile="false"/>
+  <include file="config/liquibase/changelog/20250404154459_added_entity_constraints_Guest.xml" relativeToChangelogFile="false"/>
+  <include file="config/liquibase/changelog/20250404154500_added_entity_constraints_SeatingTable.xml" relativeToChangelogFile="false"/>
+  <!-- jhipster-needle-liquibase-add-constraints-changelog - JHipster will add liquibase constraints changelogs here -->
+  <!-- jhipster-needle-liquibase-add-incremental-changelog - JHipster will add incremental liquibase changelogs here -->
 </databaseChangeLog>
