@@ -3,6 +3,7 @@ package com.lavi.tablearrangments.web.rest;
 import com.lavi.tablearrangments.domain.Guest;
 import com.lavi.tablearrangments.repository.GuestRepository;
 import com.lavi.tablearrangments.security.SecurityUtils;
+import com.lavi.tablearrangments.service.GuestAssignmentService;
 import com.lavi.tablearrangments.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -41,18 +42,13 @@ public class GuestResource {
     private String applicationName;
 
     private final GuestRepository guestRepository;
+    private final GuestAssignmentService guestAssignmentService;
 
-    public GuestResource(GuestRepository guestRepository) {
+    public GuestResource(GuestRepository guestRepository, GuestAssignmentService guestAssignmentService) {
         this.guestRepository = guestRepository;
+        this.guestAssignmentService = guestAssignmentService;
     }
 
-    /**
-     * {@code POST  /guests} : Create a new guest.
-     *
-     * @param guest the guest to create.
-     * @return the {@link ResponseEntity} with status {@code 201 (Created)} and with body the new guest, or with status {@code 400 (Bad Request)} if the guest has already an ID.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PostMapping("")
     public ResponseEntity<Guest> createGuest(@Valid @RequestBody Guest guest) throws URISyntaxException {
         LOG.debug("REST request to save Guest : {}", guest);
@@ -65,16 +61,6 @@ public class GuestResource {
             .body(guest);
     }
 
-    /**
-     * {@code PUT  /guests/:id} : Updates an existing guest.
-     *
-     * @param id the id of the guest to save.
-     * @param guest the guest to update.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated guest,
-     * or with status {@code 400 (Bad Request)} if the guest is not valid,
-     * or with status {@code 500 (Internal Server Error)} if the guest couldn't be updated.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PutMapping("/{id}")
     public ResponseEntity<Guest> updateGuest(@PathVariable(value = "id", required = false) final Long id, @Valid @RequestBody Guest guest)
         throws URISyntaxException {
@@ -96,17 +82,6 @@ public class GuestResource {
             .body(guest);
     }
 
-    /**
-     * {@code PATCH  /guests/:id} : Partial updates given fields of an existing guest, field will ignore if it is null
-     *
-     * @param id the id of the guest to save.
-     * @param guest the guest to update.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated guest,
-     * or with status {@code 400 (Bad Request)} if the guest is not valid,
-     * or with status {@code 404 (Not Found)} if the guest is not found,
-     * or with status {@code 500 (Internal Server Error)} if the guest couldn't be updated.
-     * @throws URISyntaxException if the Location URI syntax is incorrect.
-     */
     @PatchMapping(value = "/{id}", consumes = { "application/json", "application/merge-patch+json" })
     public ResponseEntity<Guest> partialUpdateGuest(
         @PathVariable(value = "id", required = false) final Long id,
@@ -162,13 +137,6 @@ public class GuestResource {
         );
     }
 
-    /**
-     * {@code GET  /guests} : get all the guests.
-     *
-     * @param pageable the pagination information.
-     * @param eagerload flag to eager load entities from relationships (This is applicable for many-to-many).
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and the list of guests in body.
-     */
     @GetMapping("")
     public ResponseEntity<List<Guest>> getAllGuests(
         @org.springdoc.core.annotations.ParameterObject Pageable pageable,
@@ -180,12 +148,6 @@ public class GuestResource {
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
 
-    /**
-     * {@code GET  /guests/:id} : get the "id" guest.
-     *
-     * @param id the id of the guest to retrieve.
-     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the guest, or with status {@code 404 (Not Found)}.
-     */
     @GetMapping("/{id}")
     public ResponseEntity<Guest> getGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Guest : {}", id);
@@ -198,12 +160,13 @@ public class GuestResource {
         return ResponseUtil.wrapOrNotFound(Optional.of(guest));
     }
 
-    /**
-     * {@code DELETE  /guests/:id} : delete the "id" guest.
-     *
-     * @param id the id of the guest to delete.
-     * @return the {@link ResponseEntity} with status {@code 204 (NO_CONTENT)}.
-     */
+    @PostMapping("/assign")
+    public ResponseEntity<Void> assignGuestsToTables() {
+        System.out.println("🔥 הגיע בקשה לשיבוץ אורחים");
+        guestAssignmentService.assignAll();
+        return ResponseEntity.ok().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Guest : {}", id);
