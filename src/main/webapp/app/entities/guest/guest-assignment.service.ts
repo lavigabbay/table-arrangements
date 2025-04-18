@@ -1,12 +1,15 @@
 export class GuestAssignmentService {
   public async assignGuestsToTables(): Promise<void> {
     try {
+      const token = localStorage.getItem('authenticationToken'); // ← הוספת הטוקן
+
       const response = await fetch('/api/guests/assign', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`, // ← הוספת כותרת Authorization
         },
-        credentials: 'include', // ← השורה הזאת מאפשרת שליחת קובצי cookie (הרשאה)
+        credentials: 'include',
       });
 
       if (!response.ok) {

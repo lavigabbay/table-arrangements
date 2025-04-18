@@ -1,9 +1,10 @@
 <template>
   <b-navbar data-cy="navbar" toggleable="md" type="dark" class="jh-navbar">
-    <b-navbar-brand class="logo" b-link to="/">
-      <span class="logo-img"></span>
-      <span v-text="t$('global.title')" class="navbar-title"></span> <span class="navbar-version">{{ version }}</span>
+    <b-navbar-brand class="logo d-flex align-items-center" b-link to="/">
+      <img src="/content/images/logo-jhipster.png" alt="לוגו" style="height: 70px; width: auto; margin-inline-end: 12px" />
+      <span class="navbar-title" v-text="t$('global.title')"></span>
     </b-navbar-brand>
+
     <b-navbar-toggle
       right
       class="jh-navbar-toggler d-lg-none"
@@ -18,12 +19,15 @@
 
     <b-collapse is-nav id="header-tabs">
       <b-navbar-nav class="ml-auto">
+        <!-- תפריט ראשי -->
         <b-nav-item to="/" exact>
           <span>
             <font-awesome-icon icon="home" />
             <span v-text="t$('global.menu.home')"></span>
           </span>
         </b-nav-item>
+
+        <!-- ישויות -->
         <b-nav-item-dropdown right id="entity-menu" v-if="authenticated" active-class="active" class="pointer" data-cy="entity">
           <template #button-content>
             <span class="navbar-dropdown-menu">
@@ -31,9 +35,10 @@
               <span class="no-bold" v-text="t$('global.menu.entities.main')"></span>
             </span>
           </template>
-          <entities-menu></entities-menu>
-          <!-- jhipster-needle-add-entity-to-menu - JHipster will add entities to the menu here -->
+          <entities-menu />
         </b-nav-item-dropdown>
+
+        <!-- אדמין -->
         <b-nav-item-dropdown
           right
           id="admin-menu"
@@ -74,6 +79,8 @@
             <span v-text="t$('global.menu.admin.apidocs')"></span>
           </b-dropdown-item>
         </b-nav-item-dropdown>
+
+        <!-- שפות -->
         <b-nav-item-dropdown id="languagesnavBarDropdown" right v-if="languages && Object.keys(languages).length > 1">
           <template #button-content>
             <font-awesome-icon icon="flag" />
@@ -88,6 +95,8 @@
             {{ value.name }}
           </b-dropdown-item>
         </b-nav-item-dropdown>
+
+        <!-- חשבון משתמש -->
         <b-nav-item-dropdown
           right
           href="javascript:void(0);"
@@ -103,23 +112,23 @@
               <span class="no-bold" v-text="t$('global.menu.account.main')"></span>
             </span>
           </template>
-          <b-dropdown-item data-cy="settings" to="/account/settings" v-if="authenticated" active-class="active">
+          <b-dropdown-item to="/account/settings" v-if="authenticated" active-class="active">
             <font-awesome-icon icon="wrench" />
             <span v-text="t$('global.menu.account.settings')"></span>
           </b-dropdown-item>
-          <b-dropdown-item data-cy="passwordItem" to="/account/password" v-if="authenticated" active-class="active">
+          <b-dropdown-item to="/account/password" v-if="authenticated" active-class="active">
             <font-awesome-icon icon="lock" />
             <span v-text="t$('global.menu.account.password')"></span>
           </b-dropdown-item>
-          <b-dropdown-item data-cy="logout" v-if="authenticated" @click="logout()" id="logout" active-class="active">
+          <b-dropdown-item v-if="authenticated" @click="logout()" active-class="active">
             <font-awesome-icon icon="sign-out-alt" />
             <span v-text="t$('global.menu.account.logout')"></span>
           </b-dropdown-item>
-          <b-dropdown-item data-cy="login" v-if="!authenticated" @click="openLogin()" id="login" active-class="active">
+          <b-dropdown-item v-if="!authenticated" @click="openLogin()" active-class="active">
             <font-awesome-icon icon="sign-in-alt" />
             <span v-text="t$('global.menu.account.login')"></span>
           </b-dropdown-item>
-          <b-dropdown-item data-cy="register" to="/register" id="register" v-if="!authenticated" active-class="active">
+          <b-dropdown-item v-if="!authenticated" to="/register" active-class="active">
             <font-awesome-icon icon="user-plus" />
             <span v-text="t$('global.menu.account.register')"></span>
           </b-dropdown-item>
@@ -131,11 +140,7 @@
 
 <script lang="ts" src="./jhi-navbar.component.ts"></script>
 
-<!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
-/* ==========================================================================
-    Navbar
-    ========================================================================== */
 .navbar-version {
   font-size: 0.65em;
   color: #ccc;
@@ -146,11 +151,8 @@
   padding: 0.2em 1em;
 }
 
-.jh-navbar .profile-image {
-  margin: -10px 0;
-  height: 40px;
-  width: 40px;
-  border-radius: 50%;
+.jh-navbar .navbar-nav .nav-item {
+  margin-left: 1.5rem;
 }
 
 .jh-navbar .dropdown-item.active,
@@ -163,66 +165,13 @@
   margin-left: 0.15em;
 }
 
-.jh-navbar ul.navbar-nav {
-  padding: 0.5em;
-}
-
-.jh-navbar .navbar-nav .nav-item {
-  margin-left: 1.5rem;
-}
-
-.jh-navbar a.nav-link,
-.jh-navbar .no-bold {
-  font-weight: 400;
-}
-
-.jh-navbar .jh-navbar-toggler {
-  color: #ccc;
-  font-size: 1.5em;
-  padding: 10px;
-}
-
-.jh-navbar .jh-navbar-toggler:hover {
-  color: #fff;
-}
-
-@media screen and (min-width: 768px) {
-  .jh-navbar-toggler {
-    display: none;
-  }
-}
-
-@media screen and (min-width: 768px) and (max-width: 1150px) {
-  span span {
-    display: none;
-  }
-}
-
 .navbar-title {
-  display: inline-block;
   color: white;
+  font-weight: bold;
+  font-size: 1.25rem;
 }
 
-/* ==========================================================================
-    Logo styles
-    ========================================================================== */
 .navbar-brand.logo {
   padding: 0 7px;
-}
-
-.logo .logo-img {
-  height: 45px;
-  display: inline-block;
-  vertical-align: middle;
-  width: 45px;
-}
-
-.logo-img {
-  height: 100%;
-  background: url('/content/images/logo-jhipster.png') no-repeat center center;
-  background-size: contain;
-  width: 100%;
-  filter: drop-shadow(0 0 0.05rem white);
-  margin: 0 5px;
 }
 </style>
