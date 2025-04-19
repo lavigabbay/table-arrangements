@@ -1,25 +1,24 @@
+import axios from 'axios';
+
+const baseApiUrl = 'api/guests';
+
 export class GuestAssignmentService {
   public async assignGuestsToTables(): Promise<void> {
     try {
-      const token = localStorage.getItem('authenticationToken'); // ← הוספת הטוקן
-
-      const response = await fetch('/api/guests/assign', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`, // ← הוספת כותרת Authorization
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('שגיאה מהשרת:', errorText);
-        throw new Error(`שגיאה בשיבוץ: ${response.status} - ${response.statusText}`);
-      }
+      await axios.post(`${baseApiUrl}/assign`);
     } catch (error: any) {
-      console.error('שגיאה כללית במהלך שליחת הבקשה לשיבוץ אורחים:', error);
-      throw error;
+      if (error.response) {
+        const status = error.response.status;
+        const message = error.response.data?.message || error.response.statusText;
+        console.error('שגיאה מהשרת:', message);
+        throw new Error(`שגיאה בשיבוץ: ${status} - ${message}`);
+      } else if (error.request) {
+        console.error('הבקשה נשלחה אך לא התקבלה תגובה מהשרת:', error.request);
+        throw new Error('לא התקבלה תגובה מהשרת.');
+      } else {
+        console.error('שגיאה כללית ב־axios:', error.message);
+        throw new Error('שגיאה כללית בקריאה לשיבוץ אורחים.');
+      }
     }
   }
 }
