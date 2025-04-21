@@ -5,6 +5,8 @@ import com.lavi.tablearrangments.domain.SeatingTable;
 import com.lavi.tablearrangments.repository.GuestRepository;
 import com.lavi.tablearrangments.repository.SeatingTableRepository;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,8 @@ public class GuestAssignmentService {
     private final GuestRepository guestRepository;
     private final SeatingTableRepository seatingTableRepository;
 
+    private static final Logger log = LoggerFactory.getLogger(GuestAssignmentService.class);
+
     public GuestAssignmentService(GuestRepository guestRepository, SeatingTableRepository seatingTableRepository) {
         this.guestRepository = guestRepository;
         this.seatingTableRepository = seatingTableRepository;
@@ -24,69 +28,211 @@ public class GuestAssignmentService {
         List<Guest> guests = guestRepository.findAllByEventUserIsCurrentUserList();
         List<SeatingTable> tables = seatingTableRepository.findByUserIsCurrentUser();
 
-        Map<Long, Integer> tableCapacities = new HashMap<>();
-        for (SeatingTable t : tables) {
-            tableCapacities.put(t.getId(), t.getMaxSeats() != null ? t.getMaxSeats() : 10);
+        int totalAvailableSeats = tables.stream().mapToInt(t -> t.getMaxSeats() != null ? t.getMaxSeats() : 10).sum();
+        int totalNeededSeats = guests.stream().mapToInt(g -> g.getNumberOfSeats() != null ? g.getNumberOfSeats() : 1).sum();
+
+        if (totalNeededSeats > totalAvailableSeats) {
+            log.error("❌ אין מספיק מקומות באולם. נדרשים {}, קיימים {}", totalNeededSeats, totalAvailableSeats);
+            throw new IllegalStateException(
+                "❌ אין מספיק מקומות באולם עבור כל האורחים. נדרשים " + totalNeededSeats + ", קיימים רק " + totalAvailableSeats
+            );
         }
 
+        Map<Long, Integer> tableCapacities = initializeTableCapacities(tables);
+        Map<Long, List<Guest>> guestsPerTable = new HashMap<>();
+
+        int[][] costMatrix = buildCostMatrix(guests, tables, tableCapacities, guestsPerTable);
+        int[] assignment = hungarianAlgorithm(costMatrix);
+        assignGuestsToTables(guests, tables, assignment, tableCapacities, guestsPerTable);
+
+        guestRepository.saveAll(guests);
+    }
+
+    private Map<Long, Integer> initializeTableCapacities(List<SeatingTable> tables) {
+        Map<Long, Integer> capacities = new HashMap<>();
+        for (SeatingTable table : tables) {
+            capacities.put(table.getId(), table.getMaxSeats() != null ? table.getMaxSeats() : 10);
+        }
+        return capacities;
+    }
+
+    private int[][] buildCostMatrix(
+        List<Guest> guests,
+        List<SeatingTable> tables,
+        Map<Long, Integer> capacities,
+        Map<Long, List<Guest>> guestsPerTable
+    ) {
         int[][] costMatrix = new int[guests.size()][tables.size()];
 
         for (int i = 0; i < guests.size(); i++) {
-            Guest guest = guests.get(i);
             for (int j = 0; j < tables.size(); j++) {
-                SeatingTable table = tables.get(j);
-
-                if (
-                    (tableCapacities.get(table.getId()) < guest.getNumberOfSeats()) ||
-                    (guest.getAccessibility() != null && guest.getAccessibility() && !Boolean.TRUE.equals(table.getAccessibility()))
-                ) {
-                    costMatrix[i][j] = Integer.MAX_VALUE / 2;
-                    continue;
-                }
-
-                int cost = 0;
-                String side = table.getTableNumber() <= 10 ? "GROOM" : "BRIDE";
-
-                if (guest.getSide() != null && !guest.getSide().equals(side)) {
-                    cost += 5;
-                }
-                if (guest.getNearStage() != null && guest.getNearStage() && (table.getNearStage() == null || !table.getNearStage())) {
-                    cost += 10;
-                }
-
-                for (Guest other : guests) {
-                    if (other.getId().equals(guest.getId())) continue;
-
-                    if (guest.getPreferGuests() != null && guest.getPreferGuests().contains(other)) {
-                        cost -= 30; // חיזוק קשרים חיוביים
-                    }
-                    if (guest.getAvoidGuests() != null && guest.getAvoidGuests().contains(other)) {
-                        cost += 1000; // הרחקת אורחים שלא מסתדרים
-                    }
-
-                    if (guest.getRelation() != null && other.getRelation() != null && !guest.getRelation().equals(other.getRelation())) {
-                        cost += 5;
-                    }
-                }
-
+                List<Guest> simulatedTableGuests = new ArrayList<>(guestsPerTable.getOrDefault(tables.get(j).getId(), new ArrayList<>()));
+                simulatedTableGuests.add(guests.get(i));
+                int cost = calculateCost(guests.get(i), tables.get(j), guests, capacities, simulatedTableGuests);
                 costMatrix[i][j] = cost;
+                log.info("אורח {} -> שולחן {}: עלות = {}", guests.get(i).getLastNameAndFirstName(), tables.get(j).getTableNumber(), cost);
             }
         }
 
-        int[] assignment = hungarianAlgorithm(costMatrix);
+        return costMatrix;
+    }
 
+    private int calculateCost(
+        Guest guest,
+        SeatingTable table,
+        List<Guest> allGuests,
+        Map<Long, Integer> capacities,
+        List<Guest> currentGuests
+    ) {
+        int tableCapacity = capacities.get(table.getId());
+        int numberOfSeats = guest.getNumberOfSeats() != null ? guest.getNumberOfSeats() : 1;
+
+        if (
+            tableCapacity < numberOfSeats ||
+            (Boolean.TRUE.equals(guest.getAccessibility()) && !Boolean.TRUE.equals(table.getAccessibility()))
+        ) {
+            return Integer.MAX_VALUE / 2;
+        }
+
+        int cost = 0;
+
+        String side = table.getTableNumber() <= 10 ? "GROOM" : "BRIDE";
+        if (guest.getSide() != null && !guest.getSide().equals(side)) {
+            cost += 5;
+        }
+
+        if (Boolean.TRUE.equals(guest.getNearStage()) && !Boolean.TRUE.equals(table.getNearStage())) {
+            cost += 10;
+        }
+
+        boolean hasRelation = false;
+        boolean hasPrefer = false;
+
+        log.debug(
+            "בודק עלות לאורח {} מול שולחן {} (יושבים כרגע {} אורחים)",
+            guest.getLastNameAndFirstName(),
+            table.getTableNumber(),
+            currentGuests.size()
+        );
+
+        if (currentGuests.isEmpty()) {
+            cost += 150;
+        }
+
+        for (Guest current : currentGuests) {
+            if (current.getId() != null && current.getId().equals(guest.getId())) continue;
+
+            if (guest.getAvoidGuests() != null && guest.getAvoidGuests().contains(current)) {
+                cost += 1000;
+            }
+            if (guest.getPreferGuests() != null && guest.getPreferGuests().contains(current)) {
+                cost -= 120;
+                hasPrefer = true;
+            }
+            if (guest.getRelation() != null && current.getRelation() != null && guest.getRelation().equals(current.getRelation())) {
+                cost -= 100;
+                hasRelation = true;
+            } else {
+                cost -= 8;
+            }
+
+            if (guest.getSide() != null && guest.getSide().equals(current.getSide())) {
+                if (Boolean.TRUE.equals(guest.getNearStage()) == Boolean.TRUE.equals(current.getNearStage())) {
+                    cost -= 3;
+                }
+            }
+        }
+
+        if (currentGuests.size() == 1 && !hasRelation && !hasPrefer) {
+            cost += 20;
+        } else if (!hasRelation && !hasPrefer) {
+            cost -= 6;
+        } else if (hasRelation && hasPrefer) {
+            cost -= 30;
+        } else if (currentGuests.size() > 1 && (hasRelation || hasPrefer)) {
+            cost -= 25;
+        }
+
+        if (guest.getRelation() != null && currentGuests.stream().anyMatch(g -> guest.getRelation().equals(g.getRelation()))) {
+            cost -= 60;
+        }
+
+        long sameGroupUnassigned = allGuests
+            .stream()
+            .filter(g -> !g.equals(guest))
+            .filter(g -> g.getTable() == null)
+            .filter(g -> g.getRelation() != null && g.getRelation().equals(guest.getRelation()))
+            .count();
+
+        if (sameGroupUnassigned > 0 && sameGroupUnassigned <= 3) {
+            cost -= 30;
+        }
+
+        int remainingSeats = capacities.get(table.getId());
+        int leftoverAfter = remainingSeats - numberOfSeats;
+        int alreadySitting = table.getMaxSeats() - remainingSeats;
+
+        if (leftoverAfter < 0) {
+            log.warn(
+                "שולחן {}: אין מספיק מקום לאורח {} (צריך {}, נשאר {})",
+                table.getTableNumber(),
+                guest.getLastNameAndFirstName(),
+                numberOfSeats,
+                remainingSeats
+            );
+            return Integer.MAX_VALUE / 2;
+        }
+
+        if (leftoverAfter == 0) {
+            cost -= 60;
+        } else if (remainingSeats < table.getMaxSeats() && leftoverAfter > 0) {
+            cost -= 30;
+        } else {
+            cost += leftoverAfter * 4;
+        }
+
+        cost -= alreadySitting * 10;
+
+        log.debug(
+            "עלות סופית + כיסאות ריקים לאורח {} מול שולחן {}: {} (נותרו {} כיסאות)",
+            guest.getLastNameAndFirstName(),
+            table.getTableNumber(),
+            cost,
+            leftoverAfter
+        );
+        log.info("🧾 עלות כוללת: {} -> שולחן {} = {}", guest.getLastNameAndFirstName(), table.getTableNumber(), cost);
+
+        return cost;
+    }
+
+    private void assignGuestsToTables(
+        List<Guest> guests,
+        List<SeatingTable> tables,
+        int[] assignment,
+        Map<Long, Integer> capacities,
+        Map<Long, List<Guest>> guestsPerTable
+    ) {
         for (int i = 0; i < guests.size(); i++) {
             int tableIndex = assignment[i];
             if (tableIndex >= 0 && tableIndex < tables.size()) {
                 SeatingTable table = tables.get(tableIndex);
-                if (tableCapacities.get(table.getId()) >= guests.get(i).getNumberOfSeats()) {
+                int seatsNeeded = guests.get(i).getNumberOfSeats() != null ? guests.get(i).getNumberOfSeats() : 1;
+
+                if (capacities.get(table.getId()) >= seatsNeeded) {
                     guests.get(i).setTable(table);
-                    tableCapacities.put(table.getId(), tableCapacities.get(table.getId()) - guests.get(i).getNumberOfSeats());
+                    capacities.put(table.getId(), capacities.get(table.getId()) - seatsNeeded);
+                    guestsPerTable.computeIfAbsent(table.getId(), k -> new ArrayList<>()).add(guests.get(i));
+                    log.info(
+                        "✅ שיבוץ: {} -> שולחן {} (נותרו {} מקומות)",
+                        guests.get(i).getLastNameAndFirstName(),
+                        table.getTableNumber(),
+                        capacities.get(table.getId())
+                    );
+                } else {
+                    log.warn("❌ אין מקום: {} לא שובץ לשולחן {}", guests.get(i).getLastNameAndFirstName(), table.getTableNumber());
                 }
             }
         }
-
-        guestRepository.saveAll(guests);
     }
 
     private int[] hungarianAlgorithm(int[][] cost) {
@@ -103,9 +249,11 @@ public class GuestAssignmentService {
             int[] minv = new int[m + 1];
             boolean[] used = new boolean[m + 1];
             Arrays.fill(minv, Integer.MAX_VALUE);
+
             do {
                 used[j0] = true;
                 int i0 = p[j0], delta = Integer.MAX_VALUE, j1 = -1;
+
                 for (int j = 1; j <= m; j++) {
                     if (!used[j]) {
                         int cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
@@ -119,6 +267,7 @@ public class GuestAssignmentService {
                         }
                     }
                 }
+
                 for (int j = 0; j <= m; j++) {
                     if (used[j]) {
                         u[p[j]] += delta;
@@ -127,8 +276,10 @@ public class GuestAssignmentService {
                         minv[j] -= delta;
                     }
                 }
+
                 j0 = j1;
             } while (p[j0] != 0);
+
             do {
                 int j1 = way[j0];
                 p[j0] = p[j1];
@@ -142,6 +293,7 @@ public class GuestAssignmentService {
                 result[p[j] - 1] = j - 1;
             }
         }
+
         return result;
     }
 }

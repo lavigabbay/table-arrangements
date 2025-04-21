@@ -108,18 +108,17 @@ export default defineComponent({
       await retrieveGuests();
     });
 
-    // 🧠 פונקציה למיון לפי אילוצים
     const assignGuestsWithConstraints = async () => {
       try {
         const service = new GuestAssignmentService();
         await service.assignGuestsToTables();
-        alertService.showInfo('המיון לפי אילוצים הושלם בהצלחה.');
+        alertService.showInfo('✅ המיון לפי אילוצים הושלם בהצלחה.');
         await retrieveGuests();
       } catch (error) {
-        alertService.showHttpError(error.response);
+        const customMessage = error?.response?.headers?.['x-guestapp-alert'] || 'אין מספיק מקומות ישיבה לכל האורחים.';
+        alertService.showInfo(`❌ ${customMessage}`);
       }
     };
-
     return {
       guests,
       handleSyncList,

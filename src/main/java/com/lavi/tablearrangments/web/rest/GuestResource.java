@@ -26,9 +26,6 @@ import tech.jhipster.web.util.HeaderUtil;
 import tech.jhipster.web.util.PaginationUtil;
 import tech.jhipster.web.util.ResponseUtil;
 
-/**
- * REST controller for managing {@link com.lavi.tablearrangments.domain.Guest}.
- */
 @RestController
 @RequestMapping("/api/guests")
 @Transactional
@@ -161,10 +158,18 @@ public class GuestResource {
     }
 
     @PostMapping("/assign")
-    public ResponseEntity<Void> assignGuestsToTables() {
-        System.out.println("🔥 הגיע בקשה לשיבוץ אורחים");
-        guestAssignmentService.assignAll();
-        return ResponseEntity.ok().build();
+    public ResponseEntity<String> assignGuestsToTables() {
+        try {
+            LOG.info("🔥 הגיע בקשה לשיבוץ אורחים");
+            guestAssignmentService.assignAll();
+            return ResponseEntity.ok("✅ האורחים שובצו בהצלחה");
+        } catch (IllegalStateException ex) {
+            LOG.error("שגיאה בשיבוץ אורחים: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        } catch (Exception ex) {
+            LOG.error("שגיאה בלתי צפויה בשיבוץ אורחים", ex);
+            return ResponseEntity.status(500).body("שגיאה בלתי צפויה בשיבוץ האורחים");
+        }
     }
 
     @DeleteMapping("/{id}")
