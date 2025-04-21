@@ -24,73 +24,80 @@ public class GuestAssignmentService {
         this.seatingTableRepository = seatingTableRepository;
     }
 
+    private static class SeatPosition {
+
+        Long tableId;
+        int seatIndex;
+
+        SeatPosition(Long tableId, int seatIndex) {
+            this.tableId = tableId;
+            this.seatIndex = seatIndex;
+        }
+    }
+
     public void assignAll() {
         List<Guest> guests = guestRepository.findAllByEventUserIsCurrentUserList();
         List<SeatingTable> tables = seatingTableRepository.findByUserIsCurrentUser();
 
-        int totalAvailableSeats = tables.stream().mapToInt(t -> t.getMaxSeats() != null ? t.getMaxSeats() : 10).sum();
-        int totalNeededSeats = guests.stream().mapToInt(g -> g.getNumberOfSeats() != null ? g.getNumberOfSeats() : 1).sum();
+        List<SeatPosition> seatMap = new ArrayList<>();
+        Map<Long, SeatingTable> tableMap = new HashMap<>();
+        tables.forEach(t -> tableMap.put(t.getId(), t));
 
-        if (totalNeededSeats > totalAvailableSeats) {
-            log.error("❌ אין מספיק מקומות באולם. נדרשים {}, קיימים {}", totalNeededSeats, totalAvailableSeats);
-            throw new IllegalStateException(
-                "❌ אין מספיק מקומות באולם עבור כל האורחים. נדרשים " + totalNeededSeats + ", קיימים רק " + totalAvailableSeats
-            );
+        for (SeatingTable table : tables) {
+            int seats = table.getMaxSeats() != null ? table.getMaxSeats() : 10;
+            for (int i = 0; i < seats; i++) {
+                seatMap.add(new SeatPosition(table.getId(), i));
+            }
         }
 
-        Map<Long, Integer> tableCapacities = initializeTableCapacities(tables);
-        Map<Long, List<Guest>> guestsPerTable = new HashMap<>();
+        if (guests.size() > seatMap.size()) {
+            throw new IllegalStateException("❌ אין מספיק כיסאות עבור כל האורחים");
+        }
 
-        int[][] costMatrix = buildCostMatrix(guests, tables, tableCapacities, guestsPerTable);
+        int[][] costMatrix = new int[guests.size()][seatMap.size()];
+
+        for (int i = 0; i < guests.size(); i++) {
+            Guest guest = guests.get(i);
+            for (int j = 0; j < seatMap.size(); j++) {
+                SeatPosition seat = seatMap.get(j);
+                SeatingTable table = tableMap.get(seat.tableId);
+                List<Guest> simulated = List.of(guest);
+                costMatrix[i][j] = calculateCost(guest, table, guests, simulated);
+            }
+        }
+
         int[] assignment = hungarianAlgorithm(costMatrix);
-        assignGuestsToTables(guests, tables, assignment, tableCapacities, guestsPerTable);
+        Map<Long, Integer> tableCapacities = new HashMap<>();
+        for (SeatingTable table : tables) {
+            tableCapacities.put(table.getId(), table.getMaxSeats() != null ? table.getMaxSeats() : 10);
+        }
+
+        for (int i = 0; i < guests.size(); i++) {
+            int seatIndex = assignment[i];
+            if (seatIndex >= 0 && seatIndex < seatMap.size()) {
+                SeatPosition seat = seatMap.get(seatIndex);
+                SeatingTable table = tableMap.get(seat.tableId);
+                int seatsLeft = tableCapacities.get(table.getId());
+                if (seatsLeft > 0) {
+                    guests.get(i).setTable(table);
+                    tableCapacities.put(table.getId(), seatsLeft - 1);
+                    log.info(
+                        "✅ {} שובץ לשולחן {} (נותרו {} מקומות)",
+                        guests.get(i).getLastNameAndFirstName(),
+                        table.getTableNumber(),
+                        seatsLeft - 1
+                    );
+                }
+            }
+        }
 
         guestRepository.saveAll(guests);
     }
 
-    private Map<Long, Integer> initializeTableCapacities(List<SeatingTable> tables) {
-        Map<Long, Integer> capacities = new HashMap<>();
-        for (SeatingTable table : tables) {
-            capacities.put(table.getId(), table.getMaxSeats() != null ? table.getMaxSeats() : 10);
-        }
-        return capacities;
-    }
-
-    private int[][] buildCostMatrix(
-        List<Guest> guests,
-        List<SeatingTable> tables,
-        Map<Long, Integer> capacities,
-        Map<Long, List<Guest>> guestsPerTable
-    ) {
-        int[][] costMatrix = new int[guests.size()][tables.size()];
-
-        for (int i = 0; i < guests.size(); i++) {
-            for (int j = 0; j < tables.size(); j++) {
-                List<Guest> simulatedTableGuests = new ArrayList<>(guestsPerTable.getOrDefault(tables.get(j).getId(), new ArrayList<>()));
-                simulatedTableGuests.add(guests.get(i));
-                int cost = calculateCost(guests.get(i), tables.get(j), guests, capacities, simulatedTableGuests);
-                costMatrix[i][j] = cost;
-                log.info("אורח {} -> שולחן {}: עלות = {}", guests.get(i).getLastNameAndFirstName(), tables.get(j).getTableNumber(), cost);
-            }
-        }
-
-        return costMatrix;
-    }
-
-    private int calculateCost(
-        Guest guest,
-        SeatingTable table,
-        List<Guest> allGuests,
-        Map<Long, Integer> capacities,
-        List<Guest> currentGuests
-    ) {
-        int tableCapacity = capacities.get(table.getId());
+    private int calculateCost(Guest guest, SeatingTable table, List<Guest> allGuests, List<Guest> currentGuests) {
         int numberOfSeats = guest.getNumberOfSeats() != null ? guest.getNumberOfSeats() : 1;
 
-        if (
-            tableCapacity < numberOfSeats ||
-            (Boolean.TRUE.equals(guest.getAccessibility()) && !Boolean.TRUE.equals(table.getAccessibility()))
-        ) {
+        if ((Boolean.TRUE.equals(guest.getAccessibility()) && !Boolean.TRUE.equals(table.getAccessibility()))) {
             return Integer.MAX_VALUE / 2;
         }
 
@@ -108,17 +115,6 @@ public class GuestAssignmentService {
         boolean hasRelation = false;
         boolean hasPrefer = false;
 
-        log.debug(
-            "בודק עלות לאורח {} מול שולחן {} (יושבים כרגע {} אורחים)",
-            guest.getLastNameAndFirstName(),
-            table.getTableNumber(),
-            currentGuests.size()
-        );
-
-        if (currentGuests.isEmpty()) {
-            cost += 150;
-        }
-
         for (Guest current : currentGuests) {
             if (current.getId() != null && current.getId().equals(guest.getId())) continue;
 
@@ -135,104 +131,12 @@ public class GuestAssignmentService {
             } else {
                 cost -= 8;
             }
-
-            if (guest.getSide() != null && guest.getSide().equals(current.getSide())) {
-                if (Boolean.TRUE.equals(guest.getNearStage()) == Boolean.TRUE.equals(current.getNearStage())) {
-                    cost -= 3;
-                }
-            }
         }
 
-        if (currentGuests.size() == 1 && !hasRelation && !hasPrefer) {
-            cost += 20;
-        } else if (!hasRelation && !hasPrefer) {
-            cost -= 6;
-        } else if (hasRelation && hasPrefer) {
-            cost -= 30;
-        } else if (currentGuests.size() > 1 && (hasRelation || hasPrefer)) {
-            cost -= 25;
-        }
-
-        if (guest.getRelation() != null && currentGuests.stream().anyMatch(g -> guest.getRelation().equals(g.getRelation()))) {
-            cost -= 60;
-        }
-
-        long sameGroupUnassigned = allGuests
-            .stream()
-            .filter(g -> !g.equals(guest))
-            .filter(g -> g.getTable() == null)
-            .filter(g -> g.getRelation() != null && g.getRelation().equals(guest.getRelation()))
-            .count();
-
-        if (sameGroupUnassigned > 0 && sameGroupUnassigned <= 3) {
-            cost -= 30;
-        }
-
-        int remainingSeats = capacities.get(table.getId());
-        int leftoverAfter = remainingSeats - numberOfSeats;
-        int alreadySitting = table.getMaxSeats() - remainingSeats;
-
-        if (leftoverAfter < 0) {
-            log.warn(
-                "שולחן {}: אין מספיק מקום לאורח {} (צריך {}, נשאר {})",
-                table.getTableNumber(),
-                guest.getLastNameAndFirstName(),
-                numberOfSeats,
-                remainingSeats
-            );
-            return Integer.MAX_VALUE / 2;
-        }
-
-        if (leftoverAfter == 0) {
-            cost -= 60;
-        } else if (remainingSeats < table.getMaxSeats() && leftoverAfter > 0) {
-            cost -= 30;
-        } else {
-            cost += leftoverAfter * 4;
-        }
-
-        cost -= alreadySitting * 10;
-
-        log.debug(
-            "עלות סופית + כיסאות ריקים לאורח {} מול שולחן {}: {} (נותרו {} כיסאות)",
-            guest.getLastNameAndFirstName(),
-            table.getTableNumber(),
-            cost,
-            leftoverAfter
-        );
-        log.info("🧾 עלות כוללת: {} -> שולחן {} = {}", guest.getLastNameAndFirstName(), table.getTableNumber(), cost);
+        if (hasRelation) cost -= 50;
+        if (hasPrefer) cost -= 60;
 
         return cost;
-    }
-
-    private void assignGuestsToTables(
-        List<Guest> guests,
-        List<SeatingTable> tables,
-        int[] assignment,
-        Map<Long, Integer> capacities,
-        Map<Long, List<Guest>> guestsPerTable
-    ) {
-        for (int i = 0; i < guests.size(); i++) {
-            int tableIndex = assignment[i];
-            if (tableIndex >= 0 && tableIndex < tables.size()) {
-                SeatingTable table = tables.get(tableIndex);
-                int seatsNeeded = guests.get(i).getNumberOfSeats() != null ? guests.get(i).getNumberOfSeats() : 1;
-
-                if (capacities.get(table.getId()) >= seatsNeeded) {
-                    guests.get(i).setTable(table);
-                    capacities.put(table.getId(), capacities.get(table.getId()) - seatsNeeded);
-                    guestsPerTable.computeIfAbsent(table.getId(), k -> new ArrayList<>()).add(guests.get(i));
-                    log.info(
-                        "✅ שיבוץ: {} -> שולחן {} (נותרו {} מקומות)",
-                        guests.get(i).getLastNameAndFirstName(),
-                        table.getTableNumber(),
-                        capacities.get(table.getId())
-                    );
-                } else {
-                    log.warn("❌ אין מקום: {} לא שובץ לשולחן {}", guests.get(i).getLastNameAndFirstName(), table.getTableNumber());
-                }
-            }
-        }
     }
 
     private int[] hungarianAlgorithm(int[][] cost) {
