@@ -11,7 +11,7 @@
         <!-- כפתור מיון לפי אילוצים -->
         <button class="btn btn-outline-success mr-2" @click="assignGuestsWithConstraints" :disabled="isFetching">
           <font-awesome-icon icon="project-diagram" />
-          מיין אורחים לפי אילוצים
+          Sorting guests by constraints
         </button>
 
         <router-link :to="{ name: 'GuestCreate' }" custom v-slot="{ navigate }">

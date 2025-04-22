@@ -111,14 +111,22 @@ export default defineComponent({
     const assignGuestsWithConstraints = async () => {
       try {
         const service = new GuestAssignmentService();
-        await service.assignGuestsToTables();
-        alertService.showInfo('✅ המיון לפי אילוצים הושלם בהצלחה.');
+        const warnings = await service.assignGuestsToTables();
+
+        if (warnings.length > 0) {
+          alertService.showError('⚠️ Some guests could not be assigned:\n' + warnings.join('\n'));
+        } else {
+          alertService.showSuccess('✅ Guests were successfully assigned according to constraints.');
+        }
+
         await retrieveGuests();
       } catch (error) {
-        const customMessage = error?.response?.headers?.['x-guestapp-alert'] || 'אין מספיק מקומות ישיבה לכל האורחים.';
-        alertService.showInfo(`❌ ${customMessage}`);
+        const fallbackMessage = '❌ An unexpected error occurred while assigning guests.';
+        const serverMessage = error?.response?.data?.message || error?.response?.headers?.['x-guestapp-alert'] || fallbackMessage;
+        alertService.showError(serverMessage);
       }
     };
+
     return {
       guests,
       handleSyncList,

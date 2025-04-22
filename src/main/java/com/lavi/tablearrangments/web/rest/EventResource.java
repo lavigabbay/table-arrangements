@@ -27,13 +27,16 @@ import tech.jhipster.web.util.HeaderUtil;
 import tech.jhipster.web.util.PaginationUtil;
 import tech.jhipster.web.util.ResponseUtil;
 
+/**
+ * REST controller for managing {@link com.lavi.tablearrangments.domain.Event}.
+ * Provides endpoints to create, update, delete, and retrieve events for the currently authenticated user.
+ */
 @RestController
 @RequestMapping("/api/events")
 @Transactional
 public class EventResource {
 
     private static final Logger LOG = LoggerFactory.getLogger(EventResource.class);
-
     private static final String ENTITY_NAME = "event";
 
     @Value("${jhipster.clientApp.name}")
@@ -47,6 +50,14 @@ public class EventResource {
         this.userRepository = userRepository;
     }
 
+    /**
+     * {@code POST /events} : Create a new event and associate it with the current user.
+     *
+     * @param event the event to create.
+     * @return the created event.
+     * @throws URISyntaxException if the URI is incorrect.
+     * @throws BadRequestAlertException if the event already has an ID or user not found.
+     */
     @PostMapping("")
     public ResponseEntity<Event> createEvent(@Valid @RequestBody Event event) throws URISyntaxException {
         LOG.debug("REST request to save Event : {}", event);
@@ -54,7 +65,6 @@ public class EventResource {
             throw new BadRequestAlertException("A new event cannot already have an ID", ENTITY_NAME, "idexists");
         }
 
-        // 🟢 שיוך אוטומטי של המשתמש המחובר
         Optional<User> currentUser = SecurityUtils.getCurrentUserLogin().flatMap(userRepository::findOneByLogin);
         event.setUser(currentUser.orElseThrow(() -> new BadRequestAlertException("Current user not found", ENTITY_NAME, "usernotfound")));
 
@@ -64,19 +74,21 @@ public class EventResource {
             .body(event);
     }
 
+    /**
+     * {@code PUT /events/:id} : Update an existing event.
+     *
+     * @param id the ID of the event to update.
+     * @param event the updated event object.
+     * @return the updated event.
+     * @throws URISyntaxException if the URI is incorrect.
+     * @throws BadRequestAlertException if the ID is invalid or the event does not exist.
+     */
     @PutMapping("/{id}")
     public ResponseEntity<Event> updateEvent(@PathVariable(value = "id", required = false) final Long id, @Valid @RequestBody Event event)
         throws URISyntaxException {
         LOG.debug("REST request to update Event : {}, {}", id, event);
-        if (event.getId() == null) {
-            throw new BadRequestAlertException("Invalid id", ENTITY_NAME, "idnull");
-        }
-        if (!Objects.equals(id, event.getId())) {
-            throw new BadRequestAlertException("Invalid ID", ENTITY_NAME, "idinvalid");
-        }
-
-        if (!eventRepository.existsById(id)) {
-            throw new BadRequestAlertException("Entity not found", ENTITY_NAME, "idnotfound");
+        if (event.getId() == null || !Objects.equals(id, event.getId()) || !eventRepository.existsById(id)) {
+            throw new BadRequestAlertException("Invalid or non-existing ID", ENTITY_NAME, "idinvalid");
         }
 
         event = eventRepository.save(event);
@@ -85,47 +97,35 @@ public class EventResource {
             .body(event);
     }
 
+    /**
+     * {@code PATCH /events/:id} : Partially update fields of an existing event.
+     *
+     * @param id the ID of the event to update.
+     * @param event the event with fields to be updated.
+     * @return the updated event if found.
+     * @throws URISyntaxException if the URI is incorrect.
+     * @throws BadRequestAlertException if the ID is invalid or the event does not exist.
+     */
     @PatchMapping(value = "/{id}", consumes = { "application/json", "application/merge-patch+json" })
     public ResponseEntity<Event> partialUpdateEvent(
         @PathVariable(value = "id", required = false) final Long id,
         @NotNull @RequestBody Event event
     ) throws URISyntaxException {
-        LOG.debug("REST request to partial update Event partially : {}, {}", id, event);
-        if (event.getId() == null) {
-            throw new BadRequestAlertException("Invalid id", ENTITY_NAME, "idnull");
-        }
-        if (!Objects.equals(id, event.getId())) {
-            throw new BadRequestAlertException("Invalid ID", ENTITY_NAME, "idinvalid");
-        }
-
-        if (!eventRepository.existsById(id)) {
-            throw new BadRequestAlertException("Entity not found", ENTITY_NAME, "idnotfound");
+        LOG.debug("REST request to partial update Event : {}, {}", id, event);
+        if (event.getId() == null || !Objects.equals(id, event.getId()) || !eventRepository.existsById(id)) {
+            throw new BadRequestAlertException("Invalid or non-existing ID", ENTITY_NAME, "idinvalid");
         }
 
         Optional<Event> result = eventRepository
             .findById(event.getId())
             .map(existingEvent -> {
-                if (event.getEventName() != null) {
-                    existingEvent.setEventName(event.getEventName());
-                }
-                if (event.getEventOwners() != null) {
-                    existingEvent.setEventOwners(event.getEventOwners());
-                }
-                if (event.getGroomParents() != null) {
-                    existingEvent.setGroomParents(event.getGroomParents());
-                }
-                if (event.getBrideParents() != null) {
-                    existingEvent.setBrideParents(event.getBrideParents());
-                }
-                if (event.getWeddingDate() != null) {
-                    existingEvent.setWeddingDate(event.getWeddingDate());
-                }
-                if (event.getReceptionTime() != null) {
-                    existingEvent.setReceptionTime(event.getReceptionTime());
-                }
-                if (event.getWeddingTime() != null) {
-                    existingEvent.setWeddingTime(event.getWeddingTime());
-                }
+                if (event.getEventName() != null) existingEvent.setEventName(event.getEventName());
+                if (event.getEventOwners() != null) existingEvent.setEventOwners(event.getEventOwners());
+                if (event.getGroomParents() != null) existingEvent.setGroomParents(event.getGroomParents());
+                if (event.getBrideParents() != null) existingEvent.setBrideParents(event.getBrideParents());
+                if (event.getWeddingDate() != null) existingEvent.setWeddingDate(event.getWeddingDate());
+                if (event.getReceptionTime() != null) existingEvent.setReceptionTime(event.getReceptionTime());
+                if (event.getWeddingTime() != null) existingEvent.setWeddingTime(event.getWeddingTime());
 
                 return existingEvent;
             })
@@ -137,6 +137,13 @@ public class EventResource {
         );
     }
 
+    /**
+     * {@code GET /events} : Get all events of the currently authenticated user.
+     *
+     * @param pageable the pagination information.
+     * @param eagerload whether to eagerly load relationships (default true, ignored here).
+     * @return list of events.
+     */
     @GetMapping("")
     public ResponseEntity<List<Event>> getAllEvents(
         @org.springdoc.core.annotations.ParameterObject Pageable pageable,
@@ -148,6 +155,12 @@ public class EventResource {
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
 
+    /**
+     * {@code GET /events/:id} : Get an event by ID.
+     *
+     * @param id the ID of the event to retrieve.
+     * @return the event if found.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<Event> getEvent(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Event : {}", id);
@@ -155,6 +168,12 @@ public class EventResource {
         return ResponseUtil.wrapOrNotFound(event);
     }
 
+    /**
+     * {@code DELETE /events/:id} : Delete an event by ID.
+     *
+     * @param id the ID of the event to delete.
+     * @return a 204 No Content response.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteEvent(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Event : {}", id);

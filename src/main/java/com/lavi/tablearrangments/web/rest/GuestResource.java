@@ -26,13 +26,17 @@ import tech.jhipster.web.util.HeaderUtil;
 import tech.jhipster.web.util.PaginationUtil;
 import tech.jhipster.web.util.ResponseUtil;
 
+/**
+ * REST controller for managing {@link com.lavi.tablearrangments.domain.Guest}.
+ * Provides endpoints to create, update, delete, and retrieve guests,
+ * as well as assign them to tables according to constraints.
+ */
 @RestController
 @RequestMapping("/api/guests")
 @Transactional
 public class GuestResource {
 
     private static final Logger LOG = LoggerFactory.getLogger(GuestResource.class);
-
     private static final String ENTITY_NAME = "guest";
 
     @Value("${jhipster.clientApp.name}")
@@ -46,6 +50,13 @@ public class GuestResource {
         this.guestAssignmentService = guestAssignmentService;
     }
 
+    /**
+     * {@code POST /guests} : Create a new guest.
+     *
+     * @param guest the guest to create.
+     * @return the {@link ResponseEntity} with status {@code 201 (Created)} and with body the new guest.
+     * @throws URISyntaxException if the Location URI syntax is incorrect.
+     */
     @PostMapping("")
     public ResponseEntity<Guest> createGuest(@Valid @RequestBody Guest guest) throws URISyntaxException {
         LOG.debug("REST request to save Guest : {}", guest);
@@ -58,19 +69,20 @@ public class GuestResource {
             .body(guest);
     }
 
+    /**
+     * {@code PUT /guests/:id} : Updates an existing guest.
+     *
+     * @param id the id of the guest to update.
+     * @param guest the guest to update.
+     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated guest.
+     * @throws URISyntaxException if the Location URI syntax is incorrect.
+     */
     @PutMapping("/{id}")
     public ResponseEntity<Guest> updateGuest(@PathVariable(value = "id", required = false) final Long id, @Valid @RequestBody Guest guest)
         throws URISyntaxException {
         LOG.debug("REST request to update Guest : {}, {}", id, guest);
-        if (guest.getId() == null) {
-            throw new BadRequestAlertException("Invalid id", ENTITY_NAME, "idnull");
-        }
-        if (!Objects.equals(id, guest.getId())) {
-            throw new BadRequestAlertException("Invalid ID", ENTITY_NAME, "idinvalid");
-        }
-
-        if (!guestRepository.existsById(id)) {
-            throw new BadRequestAlertException("Entity not found", ENTITY_NAME, "idnotfound");
+        if (guest.getId() == null || !Objects.equals(id, guest.getId()) || !guestRepository.existsById(id)) {
+            throw new BadRequestAlertException("Invalid or non-existing ID", ENTITY_NAME, "idinvalid");
         }
 
         guest = guestRepository.save(guest);
@@ -79,21 +91,22 @@ public class GuestResource {
             .body(guest);
     }
 
+    /**
+     * {@code PATCH /guests/:id} : Partially updates fields of an existing guest.
+     *
+     * @param id the id of the guest to update.
+     * @param guest the guest with updated fields.
+     * @return the {@link ResponseEntity} with status {@code 200 (OK)} and with body the updated guest.
+     * @throws URISyntaxException if the Location URI syntax is incorrect.
+     */
     @PatchMapping(value = "/{id}", consumes = { "application/json", "application/merge-patch+json" })
     public ResponseEntity<Guest> partialUpdateGuest(
         @PathVariable(value = "id", required = false) final Long id,
         @NotNull @RequestBody Guest guest
     ) throws URISyntaxException {
-        LOG.debug("REST request to partial update Guest partially : {}, {}", id, guest);
-        if (guest.getId() == null) {
-            throw new BadRequestAlertException("Invalid id", ENTITY_NAME, "idnull");
-        }
-        if (!Objects.equals(id, guest.getId())) {
-            throw new BadRequestAlertException("Invalid ID", ENTITY_NAME, "idinvalid");
-        }
-
-        if (!guestRepository.existsById(id)) {
-            throw new BadRequestAlertException("Entity not found", ENTITY_NAME, "idnotfound");
+        LOG.debug("REST request to partial update Guest : {}, {}", id, guest);
+        if (guest.getId() == null || !Objects.equals(id, guest.getId()) || !guestRepository.existsById(id)) {
+            throw new BadRequestAlertException("Invalid or non-existing ID", ENTITY_NAME, "idinvalid");
         }
 
         Optional<Guest> result = guestRepository
@@ -134,6 +147,13 @@ public class GuestResource {
         );
     }
 
+    /**
+     * {@code GET /guests} : Get all guests of the current user.
+     *
+     * @param pageable the pagination information.
+     * @param eagerload whether to eagerly load relationships (ignored).
+     * @return the list of guests.
+     */
     @GetMapping("")
     public ResponseEntity<List<Guest>> getAllGuests(
         @org.springdoc.core.annotations.ParameterObject Pageable pageable,
@@ -145,6 +165,12 @@ public class GuestResource {
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
 
+    /**
+     * {@code GET /guests/:id} : Get a specific guest by ID.
+     *
+     * @param id the ID of the guest.
+     * @return the guest if found and authorized, or 403 if forbidden.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<Guest> getGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to get Guest : {}", id);
@@ -157,21 +183,32 @@ public class GuestResource {
         return ResponseUtil.wrapOrNotFound(Optional.of(guest));
     }
 
+    /**
+     * {@code POST /guests/assign} : Assign guests to tables.
+     *
+     * @return list of warnings if any, or an error response in case of failure.
+     */
     @PostMapping("/assign")
-    public ResponseEntity<String> assignGuestsToTables() {
+    public ResponseEntity<List<String>> assignGuestsToTables() {
         try {
-            LOG.info("🔥 הגיע בקשה לשיבוץ אורחים");
-            guestAssignmentService.assignAll();
-            return ResponseEntity.ok("✅ האורחים שובצו בהצלחה");
+            LOG.info("🔥 Received request to assign guests to tables");
+            List<String> warnings = guestAssignmentService.assignAll();
+            return ResponseEntity.ok(warnings);
         } catch (IllegalStateException ex) {
-            LOG.error("שגיאה בשיבוץ אורחים: {}", ex.getMessage());
-            return ResponseEntity.badRequest().body(ex.getMessage());
+            LOG.error("Assignment failed due to state issue: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(List.of(ex.getMessage()));
         } catch (Exception ex) {
-            LOG.error("שגיאה בלתי צפויה בשיבוץ אורחים", ex);
-            return ResponseEntity.status(500).body("שגיאה בלתי צפויה בשיבוץ האורחים");
+            LOG.error("Unexpected error occurred during guest assignment", ex);
+            return ResponseEntity.status(500).body(List.of("An unexpected error occurred during guest assignment."));
         }
     }
 
+    /**
+     * {@code DELETE /guests/:id} : Delete a guest by ID.
+     *
+     * @param id the ID of the guest to delete.
+     * @return a 204 response if deleted, or 403 if not authorized.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteGuest(@PathVariable("id") Long id) {
         LOG.debug("REST request to delete Guest : {}", id);

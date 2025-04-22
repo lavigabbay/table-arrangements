@@ -47,6 +47,7 @@ public interface GuestRepository extends GuestRepositoryWithBagRelationships, Jp
     @Query("select guest from Guest guest left join fetch guest.event left join fetch guest.table where guest.id =:id")
     Optional<Guest> findOneWithToOneRelationships(@Param("id") Long id);
 
+    @EntityGraph(attributePaths = { "preferGuests", "avoidGuests" })
     @Query("select g from Guest g left join fetch g.event where g.event.user.login = ?#{authentication.name}")
     List<Guest> findAllByEventUserIsCurrentUserList();
 }
