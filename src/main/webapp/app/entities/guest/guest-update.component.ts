@@ -1,4 +1,4 @@
-import { type Ref, computed, defineComponent, inject, ref } from 'vue';
+import { type Ref, computed, defineComponent, inject, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { useVuelidate } from '@vuelidate/core';
@@ -22,63 +22,87 @@ export default defineComponent({
   setup() {
     const guestService = inject('guestService', () => new GuestService());
     const alertService = inject('alertService', () => useAlertService(), true);
-
-    const guest: Ref<IGuest> = ref(new Guest());
-
     const eventService = inject('eventService', () => new EventService());
-
-    const events: Ref<IEvent[]> = ref([]);
-
     const seatingTableService = inject('seatingTableService', () => new SeatingTableService());
 
-    const seatingTables: Ref<ISeatingTable[]> = ref([]);
+    // Use globalThis.navigator and cast to any to avoid TS "cannot find name 'navigator'" error
+    const currentLanguage = inject(
+      'currentLanguage',
+      () =>
+        computed(() => {
+          const nav = (globalThis as any).navigator;
+          return nav && typeof nav.language === 'string' ? nav.language : 'en';
+        }),
+      true,
+    );
 
+    const guest: Ref<IGuest> = ref(new Guest());
+    const events: Ref<IEvent[]> = ref([]);
+    const seatingTables: Ref<ISeatingTable[]> = ref([]);
     const guests: Ref<IGuest[]> = ref([]);
     const guestStatusValues: Ref<string[]> = ref(Object.keys(GuestStatus));
     const guestSideValues: Ref<string[]> = ref(Object.keys(GuestSide));
     const guestRelationValues: Ref<string[]> = ref(Object.keys(GuestRelation));
     const isSaving = ref(false);
-    const currentLanguage = inject('currentLanguage', () => computed(() => navigator.language ?? 'en'), true);
 
     const route = useRoute();
     const router = useRouter();
+    const { t: t$ } = useI18n();
 
     const previousState = () => router.go(-1);
 
-    const retrieveGuest = async guestId => {
+    // parse the string param into a number
+    const retrieveGuest = async (guestId: string) => {
+      const id = parseInt(guestId, 10);
+      if (isNaN(id)) {
+        // invalid id, skip
+        return;
+      }
       try {
-        const res = await guestService().find(guestId);
+        const res = await guestService().find(id);
         guest.value = res;
-      } catch (error) {
+      } catch (error: any) {
         alertService.showHttpError(error.response);
       }
     };
 
-    if (route.params?.guestId) {
-      retrieveGuest(route.params.guestId);
-    }
-
     const initRelationships = () => {
       eventService()
         .retrieve()
-        .then(res => {
-          events.value = res.data;
-        });
+        .then(res => (events.value = res.data));
       seatingTableService()
         .retrieve()
-        .then(res => {
-          seatingTables.value = res.data;
-        });
+        .then(res => (seatingTables.value = res.data));
       guestService()
         .retrieve()
-        .then(res => {
-          guests.value = res.data;
-        });
+        .then(res => (guests.value = res.data));
     };
 
-    initRelationships();
+    const save = async () => {
+      isSaving.value = true;
+      try {
+        if (guest.value.id) {
+          const res = await guestService().update(guest.value);
+          alertService.showInfo(t$('tableArrangmentsApp.guest.updated', { param: res.id }));
+        } else {
+          const res = await guestService().create(guest.value);
+          alertService.showSuccess(t$('tableArrangmentsApp.guest.created', { param: res.id }).toString());
+        }
+        previousState();
+      } catch (error: any) {
+        alertService.showHttpError(error.response);
+      } finally {
+        isSaving.value = false;
+      }
+    };
 
-    const { t: t$ } = useI18n();
+    const getSelected = (selectedVals: any[], option: any, pkField = 'id') => {
+      if (selectedVals) {
+        return selectedVals.find(value => option[pkField] === value[pkField]) ?? option;
+      }
+      return option;
+    };
+
     const validations = useValidation();
     const validationRules = {
       lastNameAndFirstName: {
@@ -107,8 +131,20 @@ export default defineComponent({
       avoidedBies: {},
       preferredBies: {},
     };
+
     const v$ = useVuelidate(validationRules, guest as any);
     v$.value.$validate();
+
+    onMounted(() => {
+      if (route.params?.guestId) {
+        retrieveGuest(route.params.guestId as string);
+      }
+      initRelationships();
+      guest.value.avoidGuests = [];
+      guest.value.preferGuests = [];
+      guest.value.avoidedBies = [];
+      guest.value.preferredBies = [];
+    });
 
     return {
       guestService,
@@ -125,49 +161,8 @@ export default defineComponent({
       guests,
       v$,
       t$,
+      save,
+      getSelected,
     };
-  },
-  created(): void {
-    this.guest.avoidGuests = [];
-    this.guest.preferGuests = [];
-    this.guest.avoidedBies = [];
-    this.guest.preferredBies = [];
-  },
-  methods: {
-    save(): void {
-      this.isSaving = true;
-      if (this.guest.id) {
-        this.guestService()
-          .update(this.guest)
-          .then(param => {
-            this.isSaving = false;
-            this.previousState();
-            this.alertService.showInfo(this.t$('tableArrangmentsApp.guest.updated', { param: param.id }));
-          })
-          .catch(error => {
-            this.isSaving = false;
-            this.alertService.showHttpError(error.response);
-          });
-      } else {
-        this.guestService()
-          .create(this.guest)
-          .then(param => {
-            this.isSaving = false;
-            this.previousState();
-            this.alertService.showSuccess(this.t$('tableArrangmentsApp.guest.created', { param: param.id }).toString());
-          })
-          .catch(error => {
-            this.isSaving = false;
-            this.alertService.showHttpError(error.response);
-          });
-      }
-    },
-
-    getSelected(selectedVals, option, pkField = 'id'): any {
-      if (selectedVals) {
-        return selectedVals.find(value => option[pkField] === value[pkField]) ?? option;
-      }
-      return option;
-    },
   },
 });
