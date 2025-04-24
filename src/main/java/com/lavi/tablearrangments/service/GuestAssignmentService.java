@@ -67,62 +67,57 @@ public class GuestAssignmentService {
         }
 
         for (GuestGroup group : groups) {
-            if (assignment.containsKey(group)) {
-                continue;
+            if (!assignment.containsKey(group)) {
+                List<TableState> candidates = tableStates
+                    .values()
+                    .stream()
+                    .filter(ts -> ts.canFit(group))
+                    .sorted(
+                        Comparator.comparingInt((TableState ts) -> ts.assignedGroups.isEmpty() ? 1 : 0).thenComparingInt(ts -> {
+                            int penalty = 0;
+
+                            // נגישות – הכי חשוב
+                            if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) penalty += 1000;
+
+                            // קרבה לבמה – פחות חשוב
+                            if (group.requiresNearStage() && !ts.getTable().getNearStage()) penalty += 200;
+
+                            // קשרי משפחה – תגמול
+                            String relation = group.getRelation();
+                            int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
+                            penalty -= sameRelationCount * 250;
+
+                            penalty += ts.getFreeSeats() - group.getTotalSeats();
+                            return penalty;
+                        })
+                    )
+                    .collect(Collectors.toList());
+
+                boolean groupAssigned = false;
+
+                for (TableState ts : candidates) {
+                    String relation = group.getRelation();
+                    boolean relationCompatible = relation == null || ts.assignedGroups.isEmpty() || ts.isRelationCompatible(relation);
+
+                    if (relationCompatible) {
+                        SeatingTable table = ts.getTable();
+                        ts.assignGroup(group);
+                        assignment.put(group, table);
+
+                        backtrack(assignment, groups, tableStates, warnings, bestAssignment, minOpenTables);
+
+                        assignment.remove(group);
+                        ts.removeGroup(group);
+                        groupAssigned = true;
+                    }
+                }
+
+                if (!groupAssigned) {
+                    log.warn("⚠️ Could not assign group: {}", group.getNames());
+                }
+
+                return; // סיום ענף אחרי ניסיון שיבוץ אחד
             }
-
-            List<TableState> candidates = tableStates
-                .values()
-                .stream()
-                .filter(ts -> ts.canFit(group))
-                .sorted(
-                    Comparator.comparingInt((TableState ts) -> ts.assignedGroups.isEmpty() ? 1 : 0).thenComparingInt(ts -> {
-                        int penalty = 0;
-
-                        // נגישות – הכי חשוב
-                        if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) penalty += 1000;
-
-                        // קרבה לבמה – פחות חשוב
-                        if (group.requiresNearStage() && !ts.getTable().getNearStage()) penalty += 200;
-
-                        // קשרי משפחה – תגמול
-                        String relation = group.getRelation();
-                        int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
-                        penalty -= sameRelationCount * 250;
-
-                        // ✅ שורות אלו הוסרו זמנית:
-                        // int preferCount = ts.countPreferredGuests(group);
-                        // penalty -= preferCount * 300;
-                        //
-                        // int avoidCount = ts.countAvoidedGuests(group);
-                        // penalty += avoidCount * 5000;
-
-                        // בזבוז מקום
-                        penalty += ts.getFreeSeats() - group.getTotalSeats();
-                        return penalty;
-                    })
-                )
-                .collect(Collectors.toList());
-
-            boolean groupAssigned = false;
-            for (TableState ts : candidates) {
-                SeatingTable table = ts.getTable();
-
-                ts.assignGroup(group);
-                assignment.put(group, table);
-
-                backtrack(assignment, groups, tableStates, warnings, bestAssignment, minOpenTables);
-
-                assignment.remove(group);
-                ts.removeGroup(group);
-                groupAssigned = true;
-            }
-
-            if (!groupAssigned) {
-                log.warn("⚠️ Could not assign group: {}", group.getNames());
-            }
-
-            return; // סיום ענף אחרי ניסיון שיבוץ אחד
         }
     }
 
@@ -361,6 +356,10 @@ public class GuestAssignmentService {
 
         public boolean hasConflictWith(GuestGroup group) {
             return assignedGroups.stream().anyMatch(existing -> existing.hasConflictWith(group));
+        }
+
+        public boolean isRelationCompatible(String relation) {
+            return assignedGroups.stream().flatMap(g -> g.getGuests().stream()).allMatch(g -> g.getRelation().name().equals(relation));
         }
 
         public boolean prefersGroup(GuestGroup group) {
