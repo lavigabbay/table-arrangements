@@ -30,7 +30,9 @@ public class GuestAssignmentService {
         List<Guest> allGuests = guestRepository.findAllByEventUserIsCurrentUserList();
         List<SeatingTable> allTables = seatingTableRepository.findByUserIsCurrentUser();
 
-        List<GuestGroup> guestGroups = groupGuestsByRelation(allGuests);
+        List<GuestGroup> guestGroups = groupGuestsByRelation(allGuests, allTables);
+        guestGroups.forEach(g -> log.debug("👥 Group: {} | Seats: {}", g.getNames(), g.getTotalSeats()));
+
         Map<Long, TableState> tableStates = initializeTableStates(allTables);
 
         Map<GuestGroup, SeatingTable> bestAssignment = new HashMap<>();
@@ -73,7 +75,7 @@ public class GuestAssignmentService {
                     .stream()
                     .filter(ts -> ts.canFit(group))
                     .sorted(
-                        Comparator.comparingInt((TableState ts) -> ts.assignedGroups.isEmpty() ? 1 : 0).thenComparingInt(ts -> {
+                        Comparator.comparingInt((TableState ts) -> {
                             int penalty = 0;
 
                             // נגישות – הכי חשוב
@@ -85,9 +87,16 @@ public class GuestAssignmentService {
                             // קשרי משפחה – תגמול
                             String relation = group.getRelation();
                             int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
-                            penalty -= sameRelationCount * 250;
+                            log.debug(
+                                "🔎 Evaluating group: {} | Relation: {} | SameRelationCount: {}",
+                                group.getNames(),
+                                relation,
+                                sameRelationCount
+                            );
 
+                            penalty -= sameRelationCount * 0;
                             penalty += ts.getFreeSeats() - group.getTotalSeats();
+
                             return penalty;
                         })
                     )
@@ -96,20 +105,15 @@ public class GuestAssignmentService {
                 boolean groupAssigned = false;
 
                 for (TableState ts : candidates) {
-                    String relation = group.getRelation();
-                    boolean relationCompatible = relation == null || ts.assignedGroups.isEmpty() || ts.isRelationCompatible(relation);
+                    SeatingTable table = ts.getTable();
+                    ts.assignGroup(group);
+                    assignment.put(group, table);
 
-                    if (relationCompatible) {
-                        SeatingTable table = ts.getTable();
-                        ts.assignGroup(group);
-                        assignment.put(group, table);
+                    backtrack(assignment, groups, tableStates, warnings, bestAssignment, minOpenTables);
 
-                        backtrack(assignment, groups, tableStates, warnings, bestAssignment, minOpenTables);
-
-                        assignment.remove(group);
-                        ts.removeGroup(group);
-                        groupAssigned = true;
-                    }
+                    assignment.remove(group);
+                    ts.removeGroup(group);
+                    groupAssigned = true;
                 }
 
                 if (!groupAssigned) {
@@ -216,13 +220,37 @@ public class GuestAssignmentService {
         }
     }
 
-    private List<GuestGroup> groupGuestsByRelation(List<Guest> guests) {
-        Map<String, List<Guest>> grouped = guests
+    private List<GuestGroup> groupGuestsByRelation(List<Guest> guests, List<SeatingTable> tables) {
+        int maxSeatsPerTable = tables.stream().mapToInt(SeatingTable::getMaxSeats).max().orElse(4); // ברירת מחדל למקרה שאין שולחנות
+
+        Map<String, List<Guest>> relationGroups = guests
             .stream()
             .filter(g -> g.getRelation() != null)
             .collect(Collectors.groupingBy(g -> g.getRelation().name()));
 
-        return grouped.values().stream().map(GuestGroup::new).collect(Collectors.toList());
+        List<GuestGroup> result = new ArrayList<>();
+
+        for (List<Guest> group : relationGroups.values()) {
+            List<Guest> current = new ArrayList<>();
+            int currentSeats = 0;
+
+            for (Guest guest : group) {
+                int seats = guest.getNumberOfSeats();
+                if (currentSeats + seats > maxSeatsPerTable && !current.isEmpty()) {
+                    result.add(new GuestGroup(new ArrayList<>(current)));
+                    current.clear();
+                    currentSeats = 0;
+                }
+                current.add(guest);
+                currentSeats += seats;
+            }
+
+            if (!current.isEmpty()) {
+                result.add(new GuestGroup(current));
+            }
+        }
+
+        return result;
     }
 
     private Map<Long, TableState> initializeTableStates(List<SeatingTable> tables) {
