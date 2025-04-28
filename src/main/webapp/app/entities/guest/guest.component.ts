@@ -2,7 +2,6 @@ import { type Ref, defineComponent, inject, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import GuestService from './guest.service';
-import SeatingTableService from '@/entities/seating-table/seating-table.service';
 import { GuestAssignmentService } from './guest-assignment.service';
 import { type IGuest } from '@/shared/model/guest.model';
 import { useAlertService } from '@/shared/alert/alert.service';
@@ -13,11 +12,10 @@ export default defineComponent({
   setup() {
     const { t: t$ } = useI18n();
     const guestService = inject('guestService', () => new GuestService());
-    const seatingTableService = inject('seatingTableService', () => new SeatingTableService());
     const alertService = inject('alertService', () => useAlertService(), true);
 
     const itemsPerPage = ref(20);
-    const queryCount: Ref<number> = ref(null);
+    const queryCount: Ref<number | null> = ref(null);
     const page: Ref<number> = ref(1);
     const propOrder = ref('id');
     const reverse = ref(false);
@@ -51,7 +49,11 @@ export default defineComponent({
         queryCount.value = totalItems.value;
         guests.value = res.data;
       } catch (err) {
-        alertService.showHttpError(err.response);
+        if (err && err.response) {
+          alertService.showHttpError(err.response);
+        } else {
+          console.error('Unknown error:', err);
+        }
       } finally {
         isFetching.value = false;
       }
@@ -65,7 +67,7 @@ export default defineComponent({
       await retrieveGuests();
     });
 
-    const removeId: Ref<number> = ref(null);
+    const removeId: Ref<number | null> = ref(null);
     const removeEntity = ref<any>(null);
     const prepareRemove = (instance: IGuest) => {
       removeId.value = instance.id;
@@ -77,13 +79,17 @@ export default defineComponent({
     const removeGuest = async () => {
       try {
         await guestService().delete(removeId.value);
-        const message = t$('tableArrangmentsApp.guest.deleted', { param: removeId.value }).toString();
+        const message = t$('tableArrangementsApp.guest.deleted', { param: removeId.value }).toString();
         alertService.showInfo(message, { variant: 'danger' });
         removeId.value = null;
         retrieveGuests();
         closeDialog();
       } catch (error) {
-        alertService.showHttpError(error.response);
+        if (error && error.response) {
+          alertService.showHttpError(error.response);
+        } else {
+          console.error('Unknown error during guest deletion:', error);
+        }
       }
     };
 
@@ -114,14 +120,14 @@ export default defineComponent({
         const warnings = await service.assignGuestsToTables();
 
         if (warnings.length > 0) {
-          alertService.showError('⚠️ Some guests could not be assigned:\n' + warnings.join('\n'));
+          alertService.showError('⚠️ האורחים הבאים לא שובצו:\n' + warnings.join('\n'));
         } else {
-          alertService.showSuccess('✅ Guests were successfully assigned according to constraints.');
+          alertService.showSuccess('✅ שיבוץ האורחים בוצע בהצלחה לפי האילוצים.');
         }
 
         await retrieveGuests();
       } catch (error) {
-        const fallbackMessage = '❌ An unexpected error occurred while assigning guests.';
+        const fallbackMessage = '❌ אירעה שגיאה בלתי צפויה במהלך שיבוץ האורחים.';
         const serverMessage = error?.response?.data?.message || error?.response?.headers?.['x-guestapp-alert'] || fallbackMessage;
         alertService.showError(serverMessage);
       }

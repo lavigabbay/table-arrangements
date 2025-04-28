@@ -11,6 +11,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service class for assigning guests to seating tables at an event,
+ * considering constraints like accessibility, near-stage preference,
+ * relation grouping, preferGuests, side (GROOM/BRIDE/BOTH), and conflict avoidance.
+ */
 @Service
 @Transactional
 public class GuestAssignmentService {
@@ -25,35 +30,59 @@ public class GuestAssignmentService {
         this.seatingTableRepository = seatingTableRepository;
     }
 
+    /**
+     * Main method to assign all guests to tables according to constraints.
+     * @return List of warning messages for unassigned guests.
+     */
     public List<String> assignAll() {
         List<String> warnings = new ArrayList<>();
         List<Guest> allGuests = guestRepository.findAllByEventUserIsCurrentUserList();
         List<SeatingTable> allTables = seatingTableRepository.findByUserIsCurrentUser();
 
+        allGuests = allGuests
+            .stream()
+            .filter(g -> g.getStatus() != null && g.getStatus().name().equals("CONFIRMED"))
+            .collect(Collectors.toList());
+
+        validateSetup(allGuests, allTables, warnings);
+
         List<GuestGroup> guestGroups = groupGuestsByRelation(allGuests, allTables);
-        guestGroups.forEach(g -> log.debug("👥 Group: {} | Seats: {}", g.getNames(), g.getTotalSeats()));
+        int maxSeatsPerTable = allTables.stream().mapToInt(SeatingTable::getMaxSeats).max().orElse(4);
+        guestGroups = splitLargeGroupsIfNeeded(guestGroups, maxSeatsPerTable);
+
+        guestGroups.forEach(g -> log.debug("Group: {} | Seats: {}", g.getNames(), g.getTotalSeats()));
 
         Map<Long, TableState> tableStates = initializeTableStates(allTables);
+        Map<String, List<SeatingTable>> sideTables = splitTablesBySide(allTables);
 
         Map<GuestGroup, SeatingTable> bestAssignment = new HashMap<>();
         int[] minOpenTables = { Integer.MAX_VALUE };
 
-        backtrack(new HashMap<>(), guestGroups, tableStates, warnings, bestAssignment, minOpenTables);
+        backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
 
         if (bestAssignment.isEmpty()) {
-            warnings.add("⚠️ לא ניתן היה לשבץ את כל האורחים לפי האילוצים.");
-            log.warn("❌ Guest assignment failed despite available options.");
+            warnings.add("\u26a0\ufe0f לא ניתן היה לשבץ את האורחים.");
+            log.warn("No valid assignment found.");
         }
 
         persistAssignment(bestAssignment);
+
+        guestGroups
+            .stream()
+            .filter(group -> !bestAssignment.containsKey(group))
+            .forEach(group -> warnings.add("\u26a0\ufe0f לא ניתן היה לשבץ את הקבוצה: " + group.getNames()));
+
         return warnings;
     }
 
+    /**
+     * Recursive backtracking to assign guests optimally to tables.
+     */
     private void backtrack(
         Map<GuestGroup, SeatingTable> assignment,
         List<GuestGroup> groups,
         Map<Long, TableState> tableStates,
-        List<String> warnings,
+        Map<String, List<SeatingTable>> sideTables,
         Map<GuestGroup, SeatingTable> bestAssignment,
         int[] minOpenTables
     ) {
@@ -63,177 +92,80 @@ public class GuestAssignmentService {
                 minOpenTables[0] = (int) openTables;
                 bestAssignment.clear();
                 bestAssignment.putAll(assignment);
-                log.info("✅ New best assignment with {} open tables", openTables);
+                log.info("New best assignment with {} open tables.", openTables);
             }
             return;
         }
 
-        for (GuestGroup group : groups) {
-            if (!assignment.containsKey(group)) {
-                List<TableState> candidates = tableStates
-                    .values()
-                    .stream()
-                    .filter(ts -> ts.canFit(group))
-                    .sorted(
-                        Comparator.comparingInt((TableState ts) -> {
-                            int penalty = 0;
+        // MRV: לבחור את הקבוצה עם הכי פחות אפשרויות חוקיות
+        GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates, sideTables);
+        if (nextGroup == null) return;
 
-                            // נגישות – הכי חשוב
-                            if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) penalty += 1000;
-
-                            // קרבה לבמה – פחות חשוב
-                            if (group.requiresNearStage() && !ts.getTable().getNearStage()) penalty += 200;
-
-                            // קשרי משפחה – תגמול
-                            String relation = group.getRelation();
-                            int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
-                            log.debug(
-                                "🔎 Evaluating group: {} | Relation: {} | SameRelationCount: {}",
-                                group.getNames(),
-                                relation,
-                                sameRelationCount
-                            );
-
-                            penalty -= sameRelationCount * 0;
-                            penalty += ts.getFreeSeats() - group.getTotalSeats();
-
-                            return penalty;
-                        })
-                    )
-                    .collect(Collectors.toList());
-
-                boolean groupAssigned = false;
-
-                for (TableState ts : candidates) {
-                    SeatingTable table = ts.getTable();
-                    ts.assignGroup(group);
-                    assignment.put(group, table);
-
-                    backtrack(assignment, groups, tableStates, warnings, bestAssignment, minOpenTables);
-
-                    assignment.remove(group);
-                    ts.removeGroup(group);
-                    groupAssigned = true;
-                }
-
-                if (!groupAssigned) {
-                    log.warn("⚠️ Could not assign group: {}", group.getNames());
-                }
-
-                return; // סיום ענף אחרי ניסיון שיבוץ אחד
-            }
-        }
-    }
-
-    private GuestGroup selectUnassignedGroup(
-        List<GuestGroup> groups,
-        Map<GuestGroup, SeatingTable> assignment,
-        Map<Long, TableState> tableStates
-    ) {
-        GuestGroup selected = null;
-        int minOptions = Integer.MAX_VALUE;
-
-        for (GuestGroup group : groups) {
-            if (!assignment.containsKey(group)) {
-                List<SeatingTable> validTables = new ArrayList<>();
-                List<String> rejectedReasons = new ArrayList<>();
-
-                for (TableState tableState : tableStates.values()) {
-                    boolean canAssign = true;
-
-                    if (!tableState.canFit(group)) {
-                        rejectedReasons.add("Table " + tableState.getTable().getTableNumber() + ": insufficient space");
-                        canAssign = false;
-                    }
-
-                    if (canAssign && tableState.hasConflictWith(group)) {
-                        rejectedReasons.add("Table " + tableState.getTable().getTableNumber() + ": conflict with existing group");
-                        canAssign = false;
-                    }
-
-                    if (canAssign) {
-                        validTables.add(tableState.getTable());
-                    }
-                }
-
-                log.debug(
-                    "🧠 Group: {} | Valid tables: {} | Rejected: {}",
-                    group.getNames(),
-                    validTables.stream().map(SeatingTable::getTableNumber).toList(),
-                    rejectedReasons
-                );
-
-                if (!validTables.isEmpty() && validTables.size() < minOptions) {
-                    minOptions = validTables.size();
-                    selected = group;
-                }
-            }
-        }
-
-        return selected;
-    }
-
-    private List<SeatingTable> orderDomainByHeuristics(GuestGroup group, Map<Long, TableState> tableStates) {
-        return tableStates
+        List<TableState> candidates = tableStates
             .values()
             .stream()
-            .filter(ts -> ts.canFit(group) && !ts.hasConflictWith(group))
-            .sorted(
-                Comparator.comparingInt(ts -> {
-                    int penalty = 0;
-                    boolean needsAccessibility = group.getGuests().stream().anyMatch(Guest::getAccessibility);
-                    if (needsAccessibility && !ts.getTable().getAccessibility()) penalty += 100;
-                    boolean wantsStage = group.getGuests().stream().anyMatch(Guest::getNearStage);
-                    if (wantsStage && !ts.getTable().getNearStage()) penalty += 50;
-                    if (!ts.prefersGroup(group)) penalty += 30;
-                    penalty += ts.getFreeSeats() - group.getTotalSeats();
-                    return penalty;
-                })
-            )
-            .map(TableState::getTable)
+            .filter(ts -> ts.canFit(nextGroup))
+            .filter(ts -> !ts.hasConflictWith(nextGroup))
+            .filter(ts -> matchesSide(nextGroup, ts.getTable(), sideTables))
+            .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup, sideTables)))
             .collect(Collectors.toList());
+
+        for (TableState ts : candidates) {
+            ts.assignGroup(nextGroup);
+            assignment.put(nextGroup, ts.getTable());
+
+            // Forward Checking: לבדוק אחרי השיבוץ שיש עדיין אפשרויות לכל הקבוצות שלא שובצו
+            if (isFeasible(groups, assignment, tableStates, sideTables)) {
+                backtrack(assignment, groups, tableStates, sideTables, bestAssignment, minOpenTables);
+            }
+
+            assignment.remove(nextGroup);
+            ts.removeGroup(nextGroup);
+        }
     }
 
-    private boolean isConsistent(
-        GuestGroup group,
-        SeatingTable table,
-        Map<GuestGroup, SeatingTable> assignment,
-        Map<Long, TableState> tableStates
-    ) {
-        TableState state = tableStates.get(table.getId());
-        if (!state.canFit(group)) return false;
-        if (state.hasConflictWith(group)) return false;
-        boolean needsAccessibility = group.getGuests().stream().anyMatch(Guest::getAccessibility);
-        if (needsAccessibility && !table.getAccessibility()) return false;
-        return true;
+    /**
+     * Compute penalty for seating a group at a table.
+     */
+    private int computePenalty(TableState ts, GuestGroup group, Map<String, List<SeatingTable>> sideTables) {
+        int penalty = 0;
+        if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) penalty += 1000;
+        if (group.requiresNearStage() && !ts.getTable().getNearStage()) penalty += 200;
+        String relation = group.getRelation();
+        penalty -= relation != null ? ts.countSameRelation(relation) * 250 : 0;
+        penalty -= ts.countPreferredGuests(group) * 150;
+        penalty += ts.getFreeSeats() - group.getTotalSeats();
+        if (!matchesSide(group, ts.getTable(), sideTables)) penalty += 300;
+        return penalty;
     }
 
+    /**
+     * Save the assignment to the database.
+     */
     private void persistAssignment(Map<GuestGroup, SeatingTable> assignment) {
-        for (Map.Entry<GuestGroup, SeatingTable> entry : assignment.entrySet()) {
-            GuestGroup group = entry.getKey();
-            SeatingTable table = entry.getValue();
+        for (GuestGroup group : assignment.keySet()) {
+            SeatingTable table = assignment.get(group);
             for (Guest guest : group.getGuests()) {
-                guest.setTable(table);
-                guest.setEvent(table.getEvent());
+                guest.setTable(table); // אם אין שולחן, ישאר null
+                if (table != null) {
+                    guest.setEvent(table.getEvent());
+                }
             }
             guestRepository.saveAll(group.getGuests());
         }
     }
 
     private List<GuestGroup> groupGuestsByRelation(List<Guest> guests, List<SeatingTable> tables) {
-        int maxSeatsPerTable = tables.stream().mapToInt(SeatingTable::getMaxSeats).max().orElse(4); // ברירת מחדל למקרה שאין שולחנות
-
+        int maxSeatsPerTable = tables.stream().mapToInt(SeatingTable::getMaxSeats).max().orElse(4);
         Map<String, List<Guest>> relationGroups = guests
             .stream()
             .filter(g -> g.getRelation() != null)
             .collect(Collectors.groupingBy(g -> g.getRelation().name()));
 
         List<GuestGroup> result = new ArrayList<>();
-
         for (List<Guest> group : relationGroups.values()) {
             List<Guest> current = new ArrayList<>();
             int currentSeats = 0;
-
             for (Guest guest : group) {
                 int seats = guest.getNumberOfSeats();
                 if (currentSeats + seats > maxSeatsPerTable && !current.isEmpty()) {
@@ -244,13 +176,32 @@ public class GuestAssignmentService {
                 current.add(guest);
                 currentSeats += seats;
             }
-
-            if (!current.isEmpty()) {
-                result.add(new GuestGroup(current));
-            }
+            if (!current.isEmpty()) result.add(new GuestGroup(current));
         }
-
         return result;
+    }
+
+    private List<GuestGroup> splitLargeGroupsIfNeeded(List<GuestGroup> groups, int maxSeatsPerTable) {
+        List<GuestGroup> adjustedGroups = new ArrayList<>();
+        for (GuestGroup group : groups) {
+            List<Guest> current = new ArrayList<>();
+            int currentSeats = 0;
+            for (Guest guest : group.getGuests()) {
+                int seats = guest.getNumberOfSeats();
+                if (seats > maxSeatsPerTable) {
+                    throw new IllegalStateException("Guest " + guest.getLastNameAndFirstName() + " requires more seats than any table!");
+                }
+                if (currentSeats + seats > maxSeatsPerTable && !current.isEmpty()) {
+                    adjustedGroups.add(new GuestGroup(new ArrayList<>(current)));
+                    current.clear();
+                    currentSeats = 0;
+                }
+                current.add(guest);
+                currentSeats += seats;
+            }
+            if (!current.isEmpty()) adjustedGroups.add(new GuestGroup(current));
+        }
+        return adjustedGroups;
     }
 
     private Map<Long, TableState> initializeTableStates(List<SeatingTable> tables) {
@@ -261,6 +212,109 @@ public class GuestAssignmentService {
         return states;
     }
 
+    /**
+     * בוחר את הקבוצה עם הכי מעט אפשרויות חוקיות (MRV)
+     */
+    private GuestGroup selectGroupWithFewestOptions(
+        List<GuestGroup> groups,
+        Map<GuestGroup, SeatingTable> assignment,
+        Map<Long, TableState> tableStates,
+        Map<String, List<SeatingTable>> sideTables
+    ) {
+        GuestGroup bestGroup = null;
+        int minOptions = Integer.MAX_VALUE;
+
+        for (GuestGroup group : groups) {
+            if (assignment.containsKey(group)) continue;
+            long options = tableStates
+                .values()
+                .stream()
+                .filter(ts -> ts.canFit(group))
+                .filter(ts -> !ts.hasConflictWith(group))
+                .filter(ts -> matchesSide(group, ts.getTable(), sideTables))
+                .count();
+            if (options < minOptions) {
+                minOptions = (int) options;
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
+    }
+
+    /**
+     * אחרי כל השמה לבדוק אם נותרו אפשרויות חוקיות לכל קבוצה שלא שובצה
+     */
+    private boolean isFeasible(
+        List<GuestGroup> groups,
+        Map<GuestGroup, SeatingTable> assignment,
+        Map<Long, TableState> tableStates,
+        Map<String, List<SeatingTable>> sideTables
+    ) {
+        for (GuestGroup group : groups) {
+            if (assignment.containsKey(group)) continue;
+            boolean hasOption = tableStates
+                .values()
+                .stream()
+                .anyMatch(ts -> ts.canFit(group) && !ts.hasConflictWith(group) && matchesSide(group, ts.getTable(), sideTables));
+            if (!hasOption) {
+                return false; // אין אפשרות חוקית - חייבים לחזור אחורה
+            }
+        }
+        return true;
+    }
+
+    private void validateSetup(List<Guest> guests, List<SeatingTable> tables, List<String> warnings) {
+        long accessibilityGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getAccessibility())).count();
+        long nearStageGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getNearStage())).count();
+        long groomGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("GROOM")).count();
+        long brideGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("BRIDE")).count();
+
+        long accessibilityTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getAccessibility())).count();
+        long nearStageTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getNearStage())).count();
+
+        int halfTables = tables.size() / 2;
+
+        if (accessibilityGuests > accessibilityTables) {
+            String msg = "\u26a0\ufe0f אין מספיק שולחנות נגישים: צריכים " + accessibilityGuests + ", ויש רק " + accessibilityTables;
+            warnings.add(msg);
+            log.warn(msg);
+        }
+
+        if (nearStageGuests > nearStageTables) {
+            String msg = "\u26a0\ufe0f אין מספיק שולחנות ליד הבמה: צריכים " + nearStageGuests + ", ויש רק " + nearStageTables;
+            warnings.add(msg);
+            log.warn(msg);
+        }
+
+        if (groomGuests > brideGuests + halfTables || brideGuests > groomGuests + halfTables) {
+            String msg = "\u26a0\ufe0f ייתכן חוסר איזון בין צד החתן לצד הכלה. אורחי חתן: " + groomGuests + ", אורחי כלה: " + brideGuests;
+            warnings.add(msg);
+            log.warn(msg);
+        }
+    }
+
+    private Map<String, List<SeatingTable>> splitTablesBySide(List<SeatingTable> allTables) {
+        List<SeatingTable> sortedTables = allTables
+            .stream()
+            .sorted(Comparator.comparingInt(SeatingTable::getTableNumber))
+            .collect(Collectors.toList());
+        int mid = sortedTables.size() / 2;
+        Map<String, List<SeatingTable>> sides = new HashMap<>();
+        sides.put("GROOM", sortedTables.subList(0, mid));
+        sides.put("BRIDE", sortedTables.subList(mid, sortedTables.size()));
+        return sides;
+    }
+
+    private boolean matchesSide(GuestGroup group, SeatingTable table, Map<String, List<SeatingTable>> sideTables) {
+        String groupSide = group.getGuests().get(0).getSide() != null ? group.getGuests().get(0).getSide().name() : "BOTH";
+        if (groupSide.equals("BOTH")) return true;
+        List<SeatingTable> allowedTables = sideTables.get(groupSide);
+        return allowedTables.contains(table);
+    }
+
+    /**
+     * Represents a group of guests.
+     */
     public static class GuestGroup {
 
         private List<Guest> guests;
@@ -277,24 +331,6 @@ public class GuestAssignmentService {
             return guests.stream().mapToInt(Guest::getNumberOfSeats).sum();
         }
 
-        public boolean hasConflictWith(GuestGroup other) {
-            for (Guest g1 : guests) {
-                for (Guest g2 : other.guests) {
-                    if (g1.getAvoidGuests().contains(g2.getId()) || g2.getAvoidGuests().contains(g1.getId())) return true;
-                }
-            }
-            return false;
-        }
-
-        public boolean prefersGroup(GuestGroup other) {
-            for (Guest g1 : guests) {
-                for (Guest g2 : other.guests) {
-                    if (g1.getPreferGuests().contains(g2.getId())) return true;
-                }
-            }
-            return false;
-        }
-
         public String getNames() {
             return guests.stream().map(Guest::getLastNameAndFirstName).collect(Collectors.joining(", "));
         }
@@ -303,16 +339,18 @@ public class GuestAssignmentService {
             return guests.stream().anyMatch(g -> Boolean.TRUE.equals(g.getAccessibility()));
         }
 
-        // בתוך GuestGroup
-        public String getRelation() {
-            return guests.isEmpty() ? null : guests.get(0).getRelation().name();
-        }
-
         public boolean requiresNearStage() {
             return guests.stream().anyMatch(g -> Boolean.TRUE.equals(g.getNearStage()));
         }
+
+        public String getRelation() {
+            return guests.isEmpty() ? null : guests.get(0).getRelation().name();
+        }
     }
 
+    /**
+     * Represents the state of a table during assignment.
+     */
     public static class TableState {
 
         private SeatingTable table;
@@ -337,39 +375,6 @@ public class GuestAssignmentService {
             usedSeats -= group.getTotalSeats();
         }
 
-        public int countPreferredGuests(GuestGroup group) {
-            return (int) group
-                .getGuests()
-                .stream()
-                .flatMap(g -> g.getPreferGuests().stream())
-                .filter(preferredId ->
-                    assignedGroups
-                        .stream()
-                        .flatMap(ag -> ag.getGuests().stream())
-                        .map(Guest::getId)
-                        .collect(Collectors.toSet())
-                        .contains(preferredId)
-                )
-                .count();
-        }
-
-        public int countAvoidedGuests(GuestGroup group) {
-            return (int) group
-                .getGuests()
-                .stream()
-                .flatMap(g -> g.getAvoidGuests().stream())
-                .filter(avoidId ->
-                    assignedGroups
-                        .stream()
-                        .flatMap(ag -> ag.getGuests().stream())
-                        .map(Guest::getId)
-                        .collect(Collectors.toSet())
-                        .contains(avoidId)
-                )
-                .count();
-        }
-
-        // בתוך TableState
         public int countSameRelation(String relation) {
             return (int) assignedGroups
                 .stream()
@@ -378,20 +383,33 @@ public class GuestAssignmentService {
                 .count();
         }
 
+        public int countPreferredGuests(GuestGroup group) {
+            Set<Long> seatedGuestIds = assignedGroups
+                .stream()
+                .flatMap(g -> g.getGuests().stream())
+                .map(Guest::getId)
+                .collect(Collectors.toSet());
+            return (int) group.getGuests().stream().flatMap(g -> g.getPreferGuests().stream()).filter(seatedGuestIds::contains).count();
+        }
+
         public int getFreeSeats() {
             return table.getMaxSeats() - usedSeats;
         }
 
         public boolean hasConflictWith(GuestGroup group) {
-            return assignedGroups.stream().anyMatch(existing -> existing.hasConflictWith(group));
-        }
-
-        public boolean isRelationCompatible(String relation) {
-            return assignedGroups.stream().flatMap(g -> g.getGuests().stream()).allMatch(g -> g.getRelation().name().equals(relation));
-        }
-
-        public boolean prefersGroup(GuestGroup group) {
-            return assignedGroups.stream().anyMatch(existing -> existing.prefersGroup(group));
+            return assignedGroups
+                .stream()
+                .flatMap(g -> g.getGuests().stream())
+                .anyMatch(existingGuest ->
+                    group
+                        .getGuests()
+                        .stream()
+                        .anyMatch(
+                            newGuest ->
+                                existingGuest.getAvoidGuests().contains(newGuest.getId()) ||
+                                newGuest.getAvoidGuests().contains(existingGuest.getId())
+                        )
+                );
         }
 
         public SeatingTable getTable() {
