@@ -22,7 +22,6 @@ public class GuestAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(GuestAssignmentService.class);
 
-    private boolean strictAvoidMode = true;
     private final GuestRepository guestRepository;
     private final SeatingTableRepository seatingTableRepository;
 
@@ -85,21 +84,6 @@ public class GuestAssignmentService {
 
         backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
 
-        if (bestAssignment.isEmpty()) {
-            log.warn("[Step 5] ⚠️ No valid assignment found with strictAvoidMode=true. Retrying without strictAvoidMode...");
-            strictAvoidMode = false;
-            backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
-
-            if (bestAssignment.isEmpty()) {
-                warnings.add("\u26a0\ufe0f No valid assignment found for the guests after retry.");
-                log.warn("[Step 5] ⚠️ No valid assignment found even after retrying without strictAvoidMode.");
-            } else {
-                log.info("[Step 5] 🎉 Best assignment found after retrying without strictAvoidMode. Open tables: {}", minOpenTables[0]);
-            }
-        } else {
-            log.info("[Step 5] 🎉 Best assignment found with minimum open tables: {}", minOpenTables[0]);
-        }
-
         persistAssignment(bestAssignment);
 
         guestGroups
@@ -146,11 +130,15 @@ public class GuestAssignmentService {
             .values()
             .stream()
             .filter(ts -> ts.canFit(nextGroup))
-            .filter(ts -> strictAvoidMode ? !ts.hasConflictWith(nextGroup) : true)
-            .filter(ts -> !ts.wouldConflictWithExistingGuests(nextGroup))
+            .filter(ts -> !ts.hasConflictWith(nextGroup))
             .filter(ts -> matchesSide(nextGroup, ts.getTable(), sideTables))
             .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup, sideTables)))
             .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) {
+            log.warn("❌ No available tables for group '{}'. Backtracking...", nextGroup.getNames());
+            return;
+        }
 
         for (TableState ts : candidates) {
             log.debug("[Step 7] 🪑 Trying to assign group '{}' to table '{}'.", nextGroup.getNames(), ts.getTable().getTableNumber());
@@ -181,16 +169,59 @@ public class GuestAssignmentService {
      */
     private int computePenalty(TableState ts, GuestGroup group, Map<String, List<SeatingTable>> sideTables) {
         int penalty = 0;
-        if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) penalty += 1000;
-        if (group.requiresNearStage() && !ts.getTable().getNearStage()) penalty += 200;
-        String relation = group.getRelation();
-        penalty -= relation != null ? ts.countSameRelation(relation) * 250 : 0;
-        penalty -= ts.countPreferredGuests(group) * 150;
-        penalty += ts.getFreeSeats() - group.getTotalSeats();
-        if (!matchesSide(group, ts.getTable(), sideTables)) penalty += 300;
-        if (ts.hasConflictWith(group)) {
-            penalty += 2000; // עונש מאוד חזק על קונפליקט
+        int initialPenalty = penalty;
+
+        if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) {
+            penalty += 1000;
+            log.info("[Penalty] Accessibility requirement violated: +1000");
         }
+
+        if (group.requiresNearStage() && !ts.getTable().getNearStage()) {
+            penalty += 200;
+            log.info("[Penalty] Near stage requirement violated: +200");
+        }
+
+        String relation = group.getRelation();
+        int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
+        if (sameRelationCount > 0) {
+            int relationBonus = sameRelationCount * 250;
+            penalty -= relationBonus;
+            log.info("[Penalty] Same relation bonus: -" + relationBonus);
+        }
+
+        int preferredGuestsCount = ts.countPreferredGuests(group);
+        if (preferredGuestsCount > 0) {
+            int preferBonus = preferredGuestsCount * 150;
+            penalty -= preferBonus;
+            log.info("[Penalty] Preferred guests bonus: -" + preferBonus);
+        }
+
+        int freeSeatsLeft = ts.getFreeSeats() - group.getTotalSeats();
+        int emptySeatsPenalty = (int) (Math.pow(freeSeatsLeft, 3) * 10);
+        penalty += emptySeatsPenalty;
+        log.info("[Penalty] Empty seats penalty (exponential): +" + emptySeatsPenalty);
+
+        if (!matchesSide(group, ts.getTable(), sideTables)) {
+            penalty += 20;
+            log.info("[Penalty] Side mismatch penalty: +20");
+        }
+
+        if (ts.hasConflictWith(group)) {
+            penalty += 2000;
+            log.info("[Penalty] Conflict detected penalty: +2000");
+        }
+
+        log.info(
+            "[Penalty] Total penalty for group '" +
+            group.getNames() +
+            "' at table '" +
+            ts.getTable().getTableNumber() +
+            "' = " +
+            penalty +
+            " (Started at: " +
+            initialPenalty +
+            ")"
+        );
         return penalty;
     }
 
@@ -487,10 +518,11 @@ public class GuestAssignmentService {
         public boolean hasConflictWith(GuestGroup group) {
             for (Guest existingGuest : assignedGroups.stream().flatMap(g -> g.getGuests().stream()).toList()) {
                 for (Guest newGuest : group.getGuests()) {
-                    if (
-                        existingGuest.getAvoidGuests().contains(newGuest.getId()) ||
-                        newGuest.getAvoidGuests().contains(existingGuest.getId())
-                    ) {
+                    boolean conflict =
+                        existingGuest.getAvoidGuests().stream().anyMatch(guest -> guest.getId().equals(newGuest.getId())) ||
+                        newGuest.getAvoidGuests().stream().anyMatch(guest -> guest.getId().equals(existingGuest.getId()));
+
+                    if (conflict) {
                         log.warn(
                             "[AvoidGuests] ❌ Conflict detected: Guest '{}' must avoid Guest '{}'",
                             existingGuest.getLastNameAndFirstName(),
