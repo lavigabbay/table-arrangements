@@ -143,24 +143,16 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-control-label" v-text="t$('tableArrangmentsApp.guest.accessibility')" for="guest-accessibility"></label>
-            <input
-              type="checkbox"
-              class="form-check"
-              name="accessibility"
-              id="guest-accessibility"
-              data-cy="accessibility"
-              :class="{ valid: !v$.accessibility.$invalid, invalid: v$.accessibility.$invalid }"
-              v-model="v$.accessibility.$model"
-              required
-            />
-            <div v-if="v$.accessibility.$anyDirty && v$.accessibility.$invalid">
-              <small class="form-text text-danger" v-for="error of v$.accessibility.$errors" :key="error.$uid">{{ error.$message }}</small>
-            </div>
-          </div>
-          <div class="form-group">
             <label class="form-control-label" v-text="t$('tableArrangmentsApp.guest.event')" for="guest-event"></label>
-            <select class="form-control" id="guest-event" data-cy="event" name="event" v-model="guest.event">
+            <select
+              class="form-control"
+              id="guest-event"
+              data-cy="event"
+              name="event"
+              v-model="v$.event.$model"
+              :class="{ valid: !v$.event.$invalid, invalid: v$.event.$invalid }"
+              required
+            >
               <option :value="null"></option>
               <option
                 :value="guest.event && eventOption.id === guest.event.id ? guest.event : eventOption"
@@ -170,7 +162,11 @@
                 {{ eventOption.eventName }}
               </option>
             </select>
+            <div v-if="v$.event.$anyDirty && v$.event.$invalid">
+              <small class="form-text text-danger" v-for="error of v$.event.$errors" :key="error.$uid">{{ error.$message }}</small>
+            </div>
           </div>
+
           <div class="form-group">
             <label class="form-control-label" v-text="t$('tableArrangmentsApp.guest.table')" for="guest-table"></label>
             <select class="form-control" id="guest-table" data-cy="table" name="table" v-model="guest.table">
@@ -213,38 +209,6 @@
             >
               <option :value="getSelected(guest.preferGuests, guestOption, 'id')" v-for="guestOption in guests" :key="guestOption.id">
                 {{ guestOption.lastNameAndFirstName }}
-              </option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label v-text="t$('tableArrangmentsApp.guest.avoidedBy')" for="guest-avoidedBy"></label>
-            <select
-              class="form-control"
-              id="guest-avoidedBies"
-              data-cy="avoidedBy"
-              multiple
-              name="avoidedBy"
-              v-if="guest.avoidedBies !== undefined"
-              v-model="guest.avoidedBies"
-            >
-              <option :value="getSelected(guest.avoidedBies, guestOption, 'id')" v-for="guestOption in guests" :key="guestOption.id">
-                {{ guestOption.id }}
-              </option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label v-text="t$('tableArrangmentsApp.guest.preferredBy')" for="guest-preferredBy"></label>
-            <select
-              class="form-control"
-              id="guest-preferredBies"
-              data-cy="preferredBy"
-              multiple
-              name="preferredBy"
-              v-if="guest.preferredBies !== undefined"
-              v-model="guest.preferredBies"
-            >
-              <option :value="getSelected(guest.preferredBies, guestOption, 'id')" v-for="guestOption in guests" :key="guestOption.id">
-                {{ guestOption.id }}
               </option>
             </select>
           </div>

@@ -124,12 +124,12 @@ export default defineComponent({
       accessibility: {
         required: validations.required(t$('entity.validation.required').toString()),
       },
-      event: {},
+      event: {
+        required: validations.required(t$('entity.validation.required').toString()),
+      },
       table: {},
       avoidGuests: {},
       preferGuests: {},
-      avoidedBies: {},
-      preferredBies: {},
     };
 
     const v$ = useVuelidate(validationRules, guest as any);
@@ -142,8 +142,6 @@ export default defineComponent({
       initRelationships();
       guest.value.avoidGuests = [];
       guest.value.preferGuests = [];
-      guest.value.avoidedBies = [];
-      guest.value.preferredBies = [];
     });
 
     return {

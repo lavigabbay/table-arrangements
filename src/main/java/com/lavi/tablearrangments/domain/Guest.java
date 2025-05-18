@@ -1,5 +1,6 @@
 package com.lavi.tablearrangments.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.lavi.tablearrangments.domain.enumeration.GuestRelation;
 import com.lavi.tablearrangments.domain.enumeration.GuestSide;
@@ -65,7 +66,7 @@ public class Guest implements Serializable {
     @JsonIgnoreProperties(value = { "event" }, allowSetters = true)
     private SeatingTable table;
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "rel_guest__avoid_guests",
         joinColumns = @JoinColumn(name = "guest_id"),
@@ -74,7 +75,7 @@ public class Guest implements Serializable {
     @JsonIgnoreProperties(value = { "event", "table", "avoidGuests", "preferGuests", "avoidedBies", "preferredBies" }, allowSetters = true)
     private Set<Guest> avoidGuests = new HashSet<>();
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "rel_guest__prefer_guests",
         joinColumns = @JoinColumn(name = "guest_id"),
@@ -83,10 +84,12 @@ public class Guest implements Serializable {
     @JsonIgnoreProperties(value = { "event", "table", "avoidGuests", "preferGuests", "avoidedBies", "preferredBies" }, allowSetters = true)
     private Set<Guest> preferGuests = new HashSet<>();
 
+    @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY, mappedBy = "avoidGuests")
     @JsonIgnoreProperties(value = { "event", "table", "avoidGuests", "preferGuests", "avoidedBies", "preferredBies" }, allowSetters = true)
     private Set<Guest> avoidedBies = new HashSet<>();
 
+    @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY, mappedBy = "preferGuests")
     @JsonIgnoreProperties(value = { "event", "table", "avoidGuests", "preferGuests", "avoidedBies", "preferredBies" }, allowSetters = true)
     private Set<Guest> preferredBies = new HashSet<>();

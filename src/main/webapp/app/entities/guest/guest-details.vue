@@ -94,24 +94,6 @@
               }}</router-link>
             </span>
           </dd>
-          <dt>
-            <span v-text="t$('tableArrangmentsApp.guest.avoidedBy')"></span>
-          </dt>
-          <dd>
-            <span v-for="(avoidedBy, i) in guest.avoidedBies" :key="avoidedBy.id"
-              >{{ i > 0 ? ', ' : '' }}
-              <router-link :to="{ name: 'GuestView', params: { guestId: avoidedBy.id } }">{{ avoidedBy.id }}</router-link>
-            </span>
-          </dd>
-          <dt>
-            <span v-text="t$('tableArrangmentsApp.guest.preferredBy')"></span>
-          </dt>
-          <dd>
-            <span v-for="(preferredBy, i) in guest.preferredBies" :key="preferredBy.id"
-              >{{ i > 0 ? ', ' : '' }}
-              <router-link :to="{ name: 'GuestView', params: { guestId: preferredBy.id } }">{{ preferredBy.id }}</router-link>
-            </span>
-          </dd>
         </dl>
         <button type="submit" @click.prevent="previousState()" class="btn btn-info" data-cy="entityDetailsBackButton">
           <font-awesome-icon icon="arrow-left"></font-awesome-icon>&nbsp;<span v-text="t$('entity.action.back')"></span>

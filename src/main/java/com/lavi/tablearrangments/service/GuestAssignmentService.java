@@ -22,6 +22,7 @@ public class GuestAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(GuestAssignmentService.class);
 
+    private boolean strictAvoidMode = true;
     private final GuestRepository guestRepository;
     private final SeatingTableRepository seatingTableRepository;
 
@@ -39,6 +40,10 @@ public class GuestAssignmentService {
         List<String> warnings = new ArrayList<>();
         List<Guest> allGuests = guestRepository.findAllByEventUserIsCurrentUserList();
         List<SeatingTable> allTables = seatingTableRepository.findByUserIsCurrentUser();
+
+        //reset last sort
+        allGuests.forEach(g -> g.setTable(null));
+        guestRepository.saveAll(allGuests);
 
         allGuests = allGuests
             .stream()
@@ -58,6 +63,7 @@ public class GuestAssignmentService {
         List<GuestGroup> guestGroups = groupGuestsByRelation(allGuests, allTables);
         int maxSeatsPerTable = allTables.stream().mapToInt(SeatingTable::getMaxSeats).max().orElse(4);
         guestGroups = splitLargeGroupsIfNeeded(guestGroups, maxSeatsPerTable);
+        guestGroups = splitConflictingGroups(guestGroups, warnings);
 
         for (GuestGroup group : guestGroups) {
             log.info("[Step 3] 📦 Created group: {} ({} seats)", group.getNames(), group.getTotalSeats());
@@ -80,8 +86,16 @@ public class GuestAssignmentService {
         backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
 
         if (bestAssignment.isEmpty()) {
-            warnings.add("\u26a0\ufe0f No valid assignment found for the guests.");
-            log.warn("[Step 5] ⚠️ No valid assignment found after backtracking.");
+            log.warn("[Step 5] ⚠️ No valid assignment found with strictAvoidMode=true. Retrying without strictAvoidMode...");
+            strictAvoidMode = false;
+            backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
+
+            if (bestAssignment.isEmpty()) {
+                warnings.add("\u26a0\ufe0f No valid assignment found for the guests after retry.");
+                log.warn("[Step 5] ⚠️ No valid assignment found even after retrying without strictAvoidMode.");
+            } else {
+                log.info("[Step 5] 🎉 Best assignment found after retrying without strictAvoidMode. Open tables: {}", minOpenTables[0]);
+            }
         } else {
             log.info("[Step 5] 🎉 Best assignment found with minimum open tables: {}", minOpenTables[0]);
         }
@@ -132,7 +146,8 @@ public class GuestAssignmentService {
             .values()
             .stream()
             .filter(ts -> ts.canFit(nextGroup))
-            .filter(ts -> !ts.hasConflictWith(nextGroup))
+            .filter(ts -> strictAvoidMode ? !ts.hasConflictWith(nextGroup) : true)
+            .filter(ts -> !ts.wouldConflictWithExistingGuests(nextGroup))
             .filter(ts -> matchesSide(nextGroup, ts.getTable(), sideTables))
             .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup, sideTables)))
             .collect(Collectors.toList());
@@ -173,6 +188,9 @@ public class GuestAssignmentService {
         penalty -= ts.countPreferredGuests(group) * 150;
         penalty += ts.getFreeSeats() - group.getTotalSeats();
         if (!matchesSide(group, ts.getTable(), sideTables)) penalty += 300;
+        if (ts.hasConflictWith(group)) {
+            penalty += 2000; // עונש מאוד חזק על קונפליקט
+        }
         return penalty;
     }
 
@@ -349,6 +367,28 @@ public class GuestAssignmentService {
             this.guests = guests;
         }
 
+        /**
+         * Checks if there is a conflict (avoidance) within the group itself.
+         * @return true if any guest in the group should avoid another guest in the same group.
+         */
+        public boolean hasInternalConflict() {
+            for (Guest guest1 : guests) {
+                for (Guest guest2 : guests) {
+                    if (!guest1.equals(guest2)) {
+                        if (guest1.getAvoidGuests().contains(guest2) || guest2.getAvoidGuests().contains(guest1)) {
+                            log.warn(
+                                "❌ Internal conflict detected within group between guest {} and guest {}",
+                                guest1.getId(),
+                                guest2.getId()
+                            );
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         public List<Guest> getGuests() {
             return guests;
         }
@@ -385,6 +425,28 @@ public class GuestAssignmentService {
 
         public TableState(SeatingTable table) {
             this.table = table;
+        }
+
+        public boolean wouldConflictWithExistingGuests(GuestGroup group) {
+            Set<Long> seatedGuestIds = assignedGroups
+                .stream()
+                .flatMap(g -> g.getGuests().stream())
+                .map(Guest::getId)
+                .collect(Collectors.toSet());
+
+            for (Guest guest : group.getGuests()) {
+                for (Guest avoided : guest.getAvoidGuests()) {
+                    if (seatedGuestIds.contains(avoided)) {
+                        log.warn(
+                            "[AvoidGuests] ❌ Conflict: Guest '{}' wants to avoid Guest ID {}",
+                            guest.getLastNameAndFirstName(),
+                            avoided
+                        );
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         public boolean canFit(GuestGroup group) {
@@ -465,5 +527,25 @@ public class GuestAssignmentService {
         for (SeatingTable table : tables) {
             log.info("Table {} - Max Seats: {}", table.getTableNumber(), table.getMaxSeats());
         }
+    }
+
+    /**
+     * Splits groups that have internal conflicts into single-guest groups.
+     */
+    private List<GuestGroup> splitConflictingGroups(List<GuestGroup> groups, List<String> warnings) {
+        List<GuestGroup> splitGroups = new ArrayList<>();
+        for (GuestGroup group : groups) {
+            if (group.hasInternalConflict()) {
+                String warningMsg = "⚠️ Group split due to internal conflicts: " + group.getNames();
+                log.warn(warningMsg);
+                warnings.add(warningMsg);
+                for (Guest guest : group.getGuests()) {
+                    splitGroups.add(new GuestGroup(Collections.singletonList(guest)));
+                }
+            } else {
+                splitGroups.add(group);
+            }
+        }
+        return splitGroups;
     }
 }
