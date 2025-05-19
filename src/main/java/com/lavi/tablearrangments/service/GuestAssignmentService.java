@@ -22,6 +22,8 @@ public class GuestAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(GuestAssignmentService.class);
 
+    private static final PenaltyCalculator penaltyCalculator = new PenaltyCalculator();
+
     private final Map<Long, Integer> assignedSeats = new HashMap<>();
 
     private final GuestRepository guestRepository;
@@ -139,8 +141,8 @@ public class GuestAssignmentService {
             .values()
             .stream()
             .filter(ts -> ts.canFit(nextGroup))
-            .filter(ts -> !ts.hasConflictWith(nextGroup))
-            .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup)))
+            .filter(ts -> ts.canAssignGroup(nextGroup))
+            .sorted(Comparator.comparingInt(ts -> penaltyCalculator.calculate(ts, nextGroup)))
             .toList();
 
         if (candidates.isEmpty()) {
@@ -173,63 +175,6 @@ public class GuestAssignmentService {
 
             printCurrentAssignments(tableStates);
         }
-    }
-
-    /**
-     * Calculates a penalty score for assigning a group to a specific table based on multiple constraints.
-     *
-     * @param ts The current table state.
-     * @param group The guest group to evaluate.
-     * @return Penalty score representing how suitable this assignment is.
-     */
-
-    private int computePenalty(TableState ts, GuestGroup group) {
-        int penalty = 0;
-        int initialPenalty = penalty;
-
-        if (group.requiresAccessibility() && !ts.getTable().getAccessibility()) {
-            penalty += 1000;
-            log.info("[Penalty] Accessibility requirement violated: +1000");
-        }
-
-        if (group.requiresNearStage() && !ts.getTable().getNearStage()) {
-            penalty += 200;
-            log.info("[Penalty] Near stage requirement violated: +200");
-        }
-
-        String relation = group.getRelation();
-        int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
-        if (sameRelationCount > 0) {
-            int relationBonus = sameRelationCount * 250;
-            penalty -= relationBonus;
-            log.info("[Penalty] Same relation bonus: -{}", relationBonus);
-        }
-
-        int preferredGuestsCount = ts.countPreferredGuests(group);
-        if (preferredGuestsCount > 0) {
-            int preferBonus = preferredGuestsCount * 150;
-            penalty -= preferBonus;
-            log.info("[Penalty] Preferred guests bonus: -{}", preferBonus);
-        }
-
-        int freeSeatsLeft = ts.getFreeSeats() - group.getTotalSeats();
-        int emptySeatsPenalty = freeSeatsLeft * freeSeatsLeft * freeSeatsLeft * 10;
-        penalty += emptySeatsPenalty;
-        log.info("[Penalty] Empty seats penalty (exponential): +{}", emptySeatsPenalty);
-
-        if (ts.hasConflictWith(group)) {
-            penalty += 2000;
-            log.info("[Penalty] Conflict detected penalty: +2000");
-        }
-
-        log.info(
-            "[Penalty] Total penalty for group '{}' at table '{}' = {} (Started at: {})",
-            group.getNames(),
-            ts.getTable().getTableNumber(),
-            penalty,
-            initialPenalty
-        );
-        return penalty;
     }
 
     // Step 9: Save best found assignment (Algorithm: Optimization)
@@ -342,7 +287,7 @@ public class GuestAssignmentService {
     private boolean isFeasible(List<GuestGroup> groups, Map<GuestGroup, SeatingTable> assignment, Map<Long, TableState> tableStates) {
         for (GuestGroup group : groups) {
             if (!assignment.containsKey(group)) {
-                boolean hasOption = tableStates.values().stream().anyMatch(ts -> ts.canFit(group) && !ts.hasConflictWith(group));
+                boolean hasOption = tableStates.values().stream().anyMatch(ts -> ts.canFit(group) && ts.canAssignGroup(group));
                 if (!hasOption) {
                     return false;
                 }
@@ -366,19 +311,14 @@ public class GuestAssignmentService {
         Map<Long, TableState> tableStates
     ) {
         GuestGroup bestGroup = null;
-        int minOptions = Integer.MAX_VALUE;
+        long minOptions = Long.MAX_VALUE;
 
         for (GuestGroup group : groups) {
             if (!assignment.containsKey(group)) {
-                long options = tableStates
-                    .values()
-                    .stream()
-                    .filter(ts -> ts.canFit(group))
-                    .filter(ts -> !ts.hasConflictWith(group))
-                    .count();
+                long options = tableStates.values().stream().filter(ts -> ts.canFit(group)).filter(ts -> ts.canAssignGroup(group)).count();
 
                 if (options < minOptions) {
-                    minOptions = (int) options;
+                    minOptions = options;
                     bestGroup = group;
                 }
             }
@@ -492,27 +432,79 @@ public class GuestAssignmentService {
             this.table = table;
         }
 
+        /**
+         * Checks if the table can accommodate the given guest group based on seat availability
+         * and accessibility requirements.
+         *
+         * @param group The guest group to check.
+         * @return True if the table can fit the group, false otherwise.
+         */
         public boolean canFit(GuestGroup group) {
+            if (group.requiresAccessibility() && !Boolean.TRUE.equals(table.getAccessibility())) {
+                return false; // שולחן לא נגיש – אי אפשר לשבץ כאן את הקבוצה
+            }
             return getFreeSeats() >= group.getTotalSeats();
         }
 
+        /**
+         * Assigns a guest group to this table and updates the used seats count accordingly.
+         *
+         * @param group The guest group to assign.
+         */
         public void assignGroup(GuestGroup group) {
             assignedGroups.add(group);
             usedSeats += group.getTotalSeats();
         }
 
+        /**
+         * Removes a guest group from this table and updates the used seats count accordingly.
+         *
+         * @param group The guest group to remove.
+         */
         public void removeGroup(GuestGroup group) {
             assignedGroups.remove(group);
             usedSeats -= group.getTotalSeats();
         }
 
+        /**
+         * Counts the number of guests already seated at this table that have the specified relation.
+         *
+         * @param relation The relation to count (e.g., FAMILY, FRIEND).
+         * @return Number of guests at this table with the specified relation.
+         */
+
         public int countSameRelation(String relation) {
             return (int) assignedGroups
                 .stream()
                 .flatMap(g -> g.getGuests().stream())
-                .filter(g -> g.getRelation().name().equals(relation))
+                .filter(g -> g.getRelation() != null && g.getRelation().name().equals(relation))
                 .count();
         }
+
+        /**
+         * Counts the number of guests already seated at this table that belong to the specified side (e.g., GROOM or BRIDE).
+         *
+         * This is used to help maintain balance between guests from different sides during the seating assignment process.
+         *
+         * @param side The side to count guests for (GROOM, BRIDE, or BOTH).
+         * @return Number of guests assigned to this table that belong to the specified side.
+         */
+
+        public int countSameSide(String side) {
+            return (int) assignedGroups
+                .stream()
+                .flatMap(g -> g.getGuests().stream())
+                .filter(g -> g.getSide() != null && g.getSide().name().equals(side))
+                .count();
+        }
+
+        /**
+         * Counts how many guests already seated at this table are preferred by the given guest group.
+         * This can be used to prioritize seating arrangements that satisfy 'preferGuests' constraints.
+         *
+         * @param group The guest group being considered for seating.
+         * @return Number of preferred guests already seated at this table.
+         */
 
         public int countPreferredGuests(GuestGroup group) {
             Set<Long> seatedGuestIds = assignedGroups
@@ -528,11 +520,23 @@ public class GuestAssignmentService {
                 .count();
         }
 
+        /**
+         * Calculates and returns the number of free seats remaining at this table.
+         *
+         * @return The number of free seats available.
+         */
         public int getFreeSeats() {
             return table.getMaxSeats() - usedSeats;
         }
 
-        public boolean hasConflictWith(GuestGroup group) {
+        /**
+         * Determines if the given guest group can be assigned to this table
+         * without violating any avoidance constraints (hard constraints).
+         *
+         * @param group The guest group to check.
+         * @return True if no conflicts are found, false otherwise.
+         */
+        public boolean canAssignGroup(GuestGroup group) {
             for (Guest existingGuest : assignedGroups.stream().flatMap(g -> g.getGuests().stream()).toList()) {
                 for (Guest newGuest : group.getGuests()) {
                     boolean conflict =
@@ -545,22 +549,28 @@ public class GuestAssignmentService {
                             existingGuest.getLastNameAndFirstName(),
                             newGuest.getLastNameAndFirstName()
                         );
-                        return true;
+                        return false; // שינוי חשוב: מחזיר false במקרה של קונפליקט
                     }
                 }
             }
-            return false;
+            return true; // אין קונפליקט, אפשר לשבץ
         }
 
+        /**
+         * Retrieves the SeatingTable object associated with this table state.
+         *
+         * @return The associated SeatingTable entity.
+         */
         public SeatingTable getTable() {
             return table;
         }
     }
 
     /**
-     * Logs the current assignment of guest groups to tables for monitoring purposes.
+     * Logs the current assignment of guest groups to tables, including used seats
+     * and the names of assigned guests for each table.
      *
-     * @param tableStates Current state of all tables.
+     * @param tableStates Map containing the current state of all tables.
      */
 
     private void printCurrentAssignments(Map<Long, TableState> tableStates) {
@@ -589,8 +599,14 @@ public class GuestAssignmentService {
     }
 
     /**
-     * Splits groups that have internal conflicts into single-guest groups.
+     * Splits guest groups that have internal conflicts (avoidance constraints between guests)
+     * into separate single-guest groups and records a warning.
+     *
+     * @param groups The list of guest groups to process.
+     * @param warnings The list where warning messages will be added.
+     * @return A new list of guest groups after splitting conflicting groups.
      */
+
     private List<GuestGroup> splitConflictingGroups(List<GuestGroup> groups, List<String> warnings) {
         List<GuestGroup> splitGroups = new ArrayList<>();
         for (GuestGroup group : groups) {
