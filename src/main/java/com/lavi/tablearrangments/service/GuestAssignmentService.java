@@ -72,7 +72,7 @@ public class GuestAssignmentService {
         log.info("[Step 4] ✅ Split oversized groups according to max seats per table.");
 
         Map<Long, TableState> tableStates = initializeTableStates(allTables);
-        Map<String, List<SeatingTable>> sideTables = splitTablesBySide(allTables);
+        Map<String, List<SeatingTable>> sideTables = splitTablesBySide(allTables, allGuests);
 
         printTablesStatus(allTables);
 
@@ -82,7 +82,7 @@ public class GuestAssignmentService {
         Map<GuestGroup, SeatingTable> bestAssignment = new HashMap<>();
         int[] minOpenTables = { Integer.MAX_VALUE };
 
-        backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables);
+        backtrack(new HashMap<>(), guestGroups, tableStates, sideTables, bestAssignment, minOpenTables, allGuests);
 
         persistAssignment(bestAssignment);
 
@@ -103,7 +103,8 @@ public class GuestAssignmentService {
         Map<Long, TableState> tableStates,
         Map<String, List<SeatingTable>> sideTables,
         Map<GuestGroup, SeatingTable> bestAssignment,
-        int[] minOpenTables
+        int[] minOpenTables,
+        List<Guest> allGuests
     ) {
         // Step 6: Select group with fewest options (Algorithm: MRV - Minimum Remaining Values)
         log.debug("[Step 6] ↩️ Backtracking: {} groups assigned so far.", assignment.size());
@@ -120,7 +121,7 @@ public class GuestAssignmentService {
         }
 
         log.debug("[Step 6] 🎯 Selecting next group to assign using MRV heuristic...");
-        GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates, sideTables);
+        GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates, sideTables, allGuests);
         if (nextGroup == null) return;
 
         log.info("[Step 6] 🎯 Selected group: {} ({} seats)", nextGroup.getNames(), nextGroup.getTotalSeats());
@@ -131,8 +132,8 @@ public class GuestAssignmentService {
             .stream()
             .filter(ts -> ts.canFit(nextGroup))
             .filter(ts -> !ts.hasConflictWith(nextGroup))
-            .filter(ts -> matchesSide(nextGroup, ts.getTable(), sideTables))
-            .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup, sideTables)))
+            .filter(ts -> matchesSide(nextGroup, ts.getTable(), sideTables, allGuests))
+            .sorted(Comparator.comparingInt(ts -> computePenalty(ts, nextGroup, sideTables, allGuests)))
             .collect(Collectors.toList());
 
         if (candidates.isEmpty()) {
@@ -148,8 +149,8 @@ public class GuestAssignmentService {
             printCurrentAssignments(tableStates);
 
             // Step 8: Check forward feasibility (Algorithm: Forward Checking)
-            if (isFeasible(groups, assignment, tableStates, sideTables)) {
-                backtrack(assignment, groups, tableStates, sideTables, bestAssignment, minOpenTables);
+            if (isFeasible(groups, assignment, tableStates, sideTables, allGuests)) {
+                backtrack(assignment, groups, tableStates, sideTables, bestAssignment, minOpenTables, allGuests);
             }
 
             log.info(
@@ -167,7 +168,7 @@ public class GuestAssignmentService {
     /**
      * Compute penalty for seating a group at a table.
      */
-    private int computePenalty(TableState ts, GuestGroup group, Map<String, List<SeatingTable>> sideTables) {
+    private int computePenalty(TableState ts, GuestGroup group, Map<String, List<SeatingTable>> sideTables, List<Guest> allGuests) {
         int penalty = 0;
         int initialPenalty = penalty;
 
@@ -201,7 +202,7 @@ public class GuestAssignmentService {
         penalty += emptySeatsPenalty;
         log.info("[Penalty] Empty seats penalty (exponential): +" + emptySeatsPenalty);
 
-        if (!matchesSide(group, ts.getTable(), sideTables)) {
+        if (!matchesSide(group, ts.getTable(), sideTables, allGuests)) {
             penalty += 20;
             log.info("[Penalty] Side mismatch penalty: +20");
         }
@@ -297,37 +298,65 @@ public class GuestAssignmentService {
         return states;
     }
 
-    private Map<String, List<SeatingTable>> splitTablesBySide(List<SeatingTable> allTables) {
+    private Map<String, List<SeatingTable>> splitTablesBySide(List<SeatingTable> allTables, List<Guest> allGuests) {
         List<SeatingTable> sortedTables = allTables
             .stream()
             .sorted(Comparator.comparingInt(SeatingTable::getTableNumber))
             .collect(Collectors.toList());
-        int mid = sortedTables.size() / 2;
+
+        long totalGuests = allGuests.size();
+        long groomGuests = allGuests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("GROOM")).count();
+        long brideGuests = allGuests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("BRIDE")).count();
+
+        double groomRatio = totalGuests == 0 ? 0.5 : (double) groomGuests / totalGuests;
+        int groomTablesCount = (int) Math.round(sortedTables.size() * groomRatio);
+        int brideTablesCount = sortedTables.size() - groomTablesCount;
+
         Map<String, List<SeatingTable>> sides = new HashMap<>();
-        sides.put("GROOM", sortedTables.subList(0, mid));
-        sides.put("BRIDE", sortedTables.subList(mid, sortedTables.size()));
+        sides.put("GROOM", sortedTables.subList(0, groomTablesCount));
+        sides.put("BRIDE", sortedTables.subList(groomTablesCount, sortedTables.size()));
         return sides;
     }
 
-    private boolean matchesSide(GuestGroup group, SeatingTable table, Map<String, List<SeatingTable>> sideTables) {
+    private boolean matchesSide(GuestGroup group, SeatingTable table, Map<String, List<SeatingTable>> sideTables, List<Guest> allGuests) {
         String groupSide = group.getGuests().get(0).getSide() != null ? group.getGuests().get(0).getSide().name() : "BOTH";
         if (groupSide.equals("BOTH")) return true;
-        List<SeatingTable> allowedTables = sideTables.get(groupSide);
-        return allowedTables.contains(table);
+
+        List<SeatingTable> preferredTables = sideTables.get(groupSide);
+        if (preferredTables == null || preferredTables.contains(table)) {
+            return true;
+        }
+
+        // בדיקה אם יש מקום בצד המועדף - על בסיס רשימת האורחים ששובצו
+        boolean hasSpaceInPreferredSide = preferredTables
+            .stream()
+            .anyMatch(t -> getAssignedSeatsForTable(t, allGuests) + group.getTotalSeats() <= t.getMaxSeats());
+
+        return !hasSpaceInPreferredSide;
+    }
+
+    // מתודה עזר בתוך ה־Service (אם אין לך כזו כבר)
+    private int getAssignedSeatsForTable(SeatingTable table, List<Guest> allGuests) {
+        return allGuests
+            .stream()
+            .filter(g -> g.getTable() != null && g.getTable().getId().equals(table.getId()))
+            .mapToInt(Guest::getNumberOfSeats)
+            .sum();
     }
 
     private boolean isFeasible(
         List<GuestGroup> groups,
         Map<GuestGroup, SeatingTable> assignment,
         Map<Long, TableState> tableStates,
-        Map<String, List<SeatingTable>> sideTables
+        Map<String, List<SeatingTable>> sideTables,
+        List<Guest> allGuests
     ) {
         for (GuestGroup group : groups) {
             if (assignment.containsKey(group)) continue;
             boolean hasOption = tableStates
                 .values()
                 .stream()
-                .anyMatch(ts -> ts.canFit(group) && !ts.hasConflictWith(group) && matchesSide(group, ts.getTable(), sideTables));
+                .anyMatch(ts -> ts.canFit(group) && !ts.hasConflictWith(group) && matchesSide(group, ts.getTable(), sideTables, allGuests));
             if (!hasOption) return false;
         }
         return true;
@@ -337,7 +366,8 @@ public class GuestAssignmentService {
         List<GuestGroup> groups,
         Map<GuestGroup, SeatingTable> assignment,
         Map<Long, TableState> tableStates,
-        Map<String, List<SeatingTable>> sideTables
+        Map<String, List<SeatingTable>> sideTables,
+        List<Guest> allGuests
     ) {
         GuestGroup bestGroup = null;
         int minOptions = Integer.MAX_VALUE;
@@ -348,7 +378,7 @@ public class GuestAssignmentService {
                 .stream()
                 .filter(ts -> ts.canFit(group))
                 .filter(ts -> !ts.hasConflictWith(group))
-                .filter(ts -> matchesSide(group, ts.getTable(), sideTables))
+                .filter(ts -> matchesSide(group, ts.getTable(), sideTables, allGuests))
                 .count();
             if (options < minOptions) {
                 minOptions = (int) options;
