@@ -1,6 +1,7 @@
 package com.lavi.tablearrangments.service;
 
 import com.lavi.tablearrangments.domain.Guest;
+import com.lavi.tablearrangments.domain.GuestGroup;
 import com.lavi.tablearrangments.domain.SeatingTable;
 import com.lavi.tablearrangments.repository.GuestRepository;
 import com.lavi.tablearrangments.repository.SeatingTableRepository;
@@ -87,7 +88,9 @@ public class GuestAssignmentService {
         Map<GuestGroup, SeatingTable> bestAssignment = new HashMap<>();
         int[] minOpenTables = { Integer.MAX_VALUE };
 
-        backtrack(new HashMap<>(), guestGroups, tableStates, bestAssignment, minOpenTables);
+        DomainManager domainManager = new DomainManager(guestGroups, allTables);
+        domainManager.applyAC3(); // ניקוי ראשוני של דומיינים
+        backtrack(new HashMap<>(), guestGroups, tableStates, bestAssignment, minOpenTables, domainManager);
 
         persistAssignment(bestAssignment);
 
@@ -114,13 +117,17 @@ public class GuestAssignmentService {
         List<GuestGroup> groups,
         Map<Long, TableState> tableStates,
         Map<GuestGroup, SeatingTable> bestAssignment,
-        int[] minOpenTables
+        int[] minOpenTables,
+        DomainManager domainManager
     ) {
         // Step 6: Select the group with the fewest options (Algorithm: MRV - Minimum Remaining Values)
         log.debug("[Step 6] ↩️ Backtracking: {} groups assigned so far.", assignment.size());
 
         if (assignment.size() == groups.size()) {
             long openTables = tableStates.values().stream().filter(ts -> !ts.assignedGroups.isEmpty()).count();
+            if (openTables >= minOpenTables[0]) {
+                return; // אין טעם להמשיך, לא נשיג תוצאה טובה יותר
+            }
             if (openTables < minOpenTables[0]) {
                 minOpenTables[0] = (int) openTables;
                 bestAssignment.clear();
@@ -131,18 +138,22 @@ public class GuestAssignmentService {
         }
 
         log.debug("[Step 6] 🎯 Selecting next group to assign using MRV heuristic...");
-        GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates);
-        if (nextGroup == null) return;
+        GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates, domainManager);
+
+        if (nextGroup == null || domainManager.getDomain(nextGroup).isEmpty()) {
+            log.warn("❌ No possible tables for group '{}'. Skipping this branch...", nextGroup != null ? nextGroup.getNames() : "UNKNOWN");
+            return; // אין טעם להמשיך, אין אפשרות השמה לקבוצה זו
+        }
 
         log.info("[Step 6] 🎯 Selected group: {} ({} seats)", nextGroup.getNames(), nextGroup.getTotalSeats());
 
         // Step 7: Try assigning group to table (Algorithm: Backtracking)
-        List<TableState> candidates = tableStates
-            .values()
+        List<SeatingTable> candidates = new ArrayList<>(domainManager.getDomain(nextGroup));
+
+        candidates = candidates
             .stream()
-            .filter(ts -> ts.canFit(nextGroup))
-            .filter(ts -> ts.canAssignGroup(nextGroup))
-            .sorted(Comparator.comparingInt(ts -> penaltyCalculator.calculate(ts, nextGroup)))
+            .filter(ts -> ts.getMaxSeats() >= nextGroup.getTotalSeats())
+            .sorted(Comparator.comparingInt(ts -> calculateDomainReduction(ts, nextGroup, domainManager)))
             .toList();
 
         if (candidates.isEmpty()) {
@@ -150,18 +161,36 @@ public class GuestAssignmentService {
             return;
         }
 
-        for (TableState ts : candidates) {
+        for (SeatingTable table : candidates) {
+            TableState ts = tableStates.get(table.getId());
             log.debug("[Step 7] 🪑 Trying to assign group '{}' to table '{}'.", nextGroup.getNames(), ts.getTable().getTableNumber());
             ts.assignGroup(nextGroup);
             assignment.put(nextGroup, ts.getTable());
 
             assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) + nextGroup.getTotalSeats());
 
+            domainManager.removeTableFromAllDomains(ts.getTable());
+
+            domainManager.applyAC3(); // Propagation נוסף אחרי כל השמה
+
+            assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) + nextGroup.getTotalSeats());
+            domainManager.removeTableFromAllDomains(ts.getTable());
+            domainManager.applyAC3(); // Propagation נוסף אחרי כל השמה
+
+            // Forward Checking: לוודא שיש עדיין אופציות לשאר הקבוצות
+            if (!isFeasible(groups, assignment, tableStates)) {
+                log.warn("⚠️ Forward Checking failed after assigning group '{}'. Backtracking immediately...", nextGroup.getNames());
+                assignment.remove(nextGroup);
+                ts.removeGroup(nextGroup);
+                assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) - nextGroup.getTotalSeats());
+                continue; // מנסה את השולחן הבא
+            }
+
             printCurrentAssignments(tableStates);
 
             // Step 8: Check forward feasibility (Algorithm: Forward Checking)
             if (isFeasible(groups, assignment, tableStates)) {
-                backtrack(assignment, groups, tableStates, bestAssignment, minOpenTables);
+                backtrack(assignment, groups, tableStates, bestAssignment, minOpenTables, domainManager);
             }
 
             log.info(
@@ -175,6 +204,26 @@ public class GuestAssignmentService {
 
             printCurrentAssignments(tableStates);
         }
+    }
+
+    /**
+     * Calculates how much assigning a group to a table will reduce the domain of other groups.
+     * Used for LCV (the least Constraining Value) heuristic.
+     */
+    private int calculateDomainReduction(SeatingTable table, GuestGroup group, DomainManager domainManager) {
+        int reduction = 0;
+        for (GuestGroup otherGroup : domainManager.getAllGroups()) {
+            if (otherGroup.equals(group)) continue;
+
+            Set<SeatingTable> domain = domainManager.getDomain(otherGroup);
+            if (domain == null || domain.isEmpty()) continue;
+
+            if (domain.contains(table)) {
+                reduction++;
+            }
+        }
+
+        return reduction; // כמה זה מצמצם את הדומיין של שאר הקבוצות – נעדיף ערכים שמצמצמים פחות
     }
 
     // Step 9: Save best found assignment (Algorithm: Optimization)
@@ -242,7 +291,16 @@ public class GuestAssignmentService {
 
         List<GuestGroup> result = new ArrayList<>();
         for (List<Guest> group : relationGroups.values()) {
-            result.addAll(splitGroupsByMaxSeats(group, maxSeatsPerTable));
+            // ✨ Split groups if some guests require accessibility and others don't
+            List<Guest> accessibilityGuests = group.stream().filter(g -> Boolean.TRUE.equals(g.getAccessibility())).toList();
+            List<Guest> nonAccessibilityGuests = group.stream().filter(g -> !Boolean.TRUE.equals(g.getAccessibility())).toList();
+
+            if (!accessibilityGuests.isEmpty() && !nonAccessibilityGuests.isEmpty()) {
+                result.addAll(splitGroupsByMaxSeats(accessibilityGuests, maxSeatsPerTable));
+                result.addAll(splitGroupsByMaxSeats(nonAccessibilityGuests, maxSeatsPerTable));
+            } else {
+                result.addAll(splitGroupsByMaxSeats(group, maxSeatsPerTable));
+            }
         }
         return result;
     }
@@ -308,7 +366,8 @@ public class GuestAssignmentService {
     private GuestGroup selectGroupWithFewestOptions(
         List<GuestGroup> groups,
         Map<GuestGroup, SeatingTable> assignment,
-        Map<Long, TableState> tableStates
+        Map<Long, TableState> tableStates,
+        DomainManager domainManager
     ) {
         GuestGroup bestGroup = null;
         long minOptions = Long.MAX_VALUE;
@@ -320,6 +379,12 @@ public class GuestAssignmentService {
                 if (options < minOptions) {
                     minOptions = options;
                     bestGroup = group;
+                } else if (options == minOptions && bestGroup != null) {
+                    long currentDegree = domainManager.getDomain(group).size();
+                    long bestDegree = domainManager.getDomain(bestGroup).size();
+                    if (currentDegree > bestDegree) {
+                        bestGroup = group;
+                    }
                 }
             }
         }
@@ -366,59 +431,6 @@ public class GuestAssignmentService {
     }
 
     /**
-     * Represents a group of guests, typically related by family or preference.
-     * Used to manage assignment constraints collectively.
-     */
-
-    public record GuestGroup(List<Guest> guests) {
-        /**
-         * Checks if there is a conflict (avoidance) within the group itself.
-         * @return true if any guest in the group should avoid another guest in the same group.
-         */
-        public boolean hasInternalConflict() {
-            for (Guest guest1 : guests) {
-                for (Guest guest2 : guests) {
-                    if (!guest1.equals(guest2)) {
-                        if (guest1.getAvoidGuests().contains(guest2) || guest2.getAvoidGuests().contains(guest1)) {
-                            log.warn(
-                                "❌ Internal conflict detected within group between guest {} and guest {}",
-                                guest1.getId(),
-                                guest2.getId()
-                            );
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-
-        public List<Guest> getGuests() {
-            return guests;
-        }
-
-        public int getTotalSeats() {
-            return guests.stream().mapToInt(Guest::getNumberOfSeats).sum();
-        }
-
-        public String getNames() {
-            return guests.stream().map(Guest::getLastNameAndFirstName).collect(Collectors.joining(", "));
-        }
-
-        public boolean requiresAccessibility() {
-            return guests.stream().anyMatch(g -> Boolean.TRUE.equals(g.getAccessibility()));
-        }
-
-        public boolean requiresNearStage() {
-            return guests.stream().anyMatch(g -> Boolean.TRUE.equals(g.getNearStage()));
-        }
-
-        public String getRelation() {
-            return guests.isEmpty() ? null : guests.get(0).getRelation().name();
-        }
-    }
-
-    /**
      * Represents the current state of a seating table during the assignment process.
      * Tracks assigned groups and the number of used seats.
      */
@@ -440,10 +452,19 @@ public class GuestAssignmentService {
          * @return True if the table can fit the group, false otherwise.
          */
         public boolean canFit(GuestGroup group) {
-            if (group.requiresAccessibility() && !Boolean.TRUE.equals(table.getAccessibility())) {
-                return false; // שולחן לא נגיש – אי אפשר לשבץ כאן את הקבוצה
+            // אם יש מספיק מקומות בשולחן – בדוק האם מתאים לפי נגישות
+            if (getFreeSeats() >= group.getTotalSeats()) {
+                if (group.requiresAccessibility() && !Boolean.TRUE.equals(table.getAccessibility())) {
+                    // יש מקום אבל השולחן לא נגיש – אפשרי, אבל בעדיפות נמוכה יותר (Soft Constraint)
+                    log.warn(
+                        "[Accessibility] ⚠️ Group '{}' requires accessibility but table '{}' is not accessible.",
+                        group.getNames(),
+                        table.getTableNumber()
+                    );
+                }
+                return true; // תמיד מאפשר מבחינת כמות מקומות, גם אם לא עומד בנגישות
             }
-            return getFreeSeats() >= group.getTotalSeats();
+            return false;
         }
 
         /**
@@ -483,7 +504,6 @@ public class GuestAssignmentService {
 
         /**
          * Counts the number of guests already seated at this table that belong to the specified side (e.g., GROOM or BRIDE).
-         *
          * This is used to help maintain balance between guests from different sides during the seating assignment process.
          *
          * @param side The side to count guests for (GROOM, BRIDE, or BOTH).

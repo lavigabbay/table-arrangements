@@ -1,6 +1,7 @@
 package com.lavi.tablearrangments.service;
 
 import com.lavi.tablearrangments.domain.Guest;
+import com.lavi.tablearrangments.domain.GuestGroup;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,7 @@ public class PenaltyCalculator {
      * @param group The guest group being evaluated.
      * @return The calculated penalty score.
      */
-    public int calculate(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    public int calculate(GuestAssignmentService.TableState ts, GuestGroup group) {
         int penalty = 0;
 
         penalty += computeNearStagePenalty(ts, group);
@@ -48,7 +49,7 @@ public class PenaltyCalculator {
      * @param group The guest group.
      * @return Penalty value (200) or 0.
      */
-    private int computeNearStagePenalty(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    private int computeNearStagePenalty(GuestAssignmentService.TableState ts, GuestGroup group) {
         if (group.requiresNearStage() && !ts.getTable().getNearStage()) {
             log.info("[Penalty] Near stage requirement violated: +200");
             return 200;
@@ -63,7 +64,7 @@ public class PenaltyCalculator {
      * @param group The guest group.
      * @return Relation bonus value.
      */
-    private int computeRelationBonus(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    private int computeRelationBonus(GuestAssignmentService.TableState ts, GuestGroup group) {
         String relation = group.getRelation();
         int sameRelationCount = relation != null ? ts.countSameRelation(relation) : 0;
         int bonus = sameRelationCount * 250;
@@ -78,7 +79,7 @@ public class PenaltyCalculator {
      * @param group The guest group.
      * @return Preferred guests bonus value.
      */
-    private int computePreferredGuestsBonus(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    private int computePreferredGuestsBonus(GuestAssignmentService.TableState ts, GuestGroup group) {
         int preferredGuestsCount = ts.countPreferredGuests(group);
         int bonus = preferredGuestsCount * 150;
         if (bonus > 0) log.info("[Penalty] Preferred guests bonus: -{}", bonus);
@@ -92,7 +93,7 @@ public class PenaltyCalculator {
      * @param group The guest group.
      * @return Side preference bonus value.
      */
-    private int computeSidePreferenceBonus(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    private int computeSidePreferenceBonus(GuestAssignmentService.TableState ts, GuestGroup group) {
         String side = group.getGuests().stream().map(Guest::getSide).filter(Objects::nonNull).map(Enum::name).findFirst().orElse(null);
 
         if (side == null) return 0;
@@ -117,7 +118,7 @@ public class PenaltyCalculator {
      * @param group The guest group.
      * @return Empty seats penalty value.
      */
-    private int computeEmptySeatsPenalty(GuestAssignmentService.TableState ts, GuestAssignmentService.GuestGroup group) {
+    private int computeEmptySeatsPenalty(GuestAssignmentService.TableState ts, GuestGroup group) {
         int freeSeatsLeft = ts.getFreeSeats() - group.getTotalSeats();
         if (freeSeatsLeft > 0) {
             int penalty = freeSeatsLeft * freeSeatsLeft * freeSeatsLeft * 10;
