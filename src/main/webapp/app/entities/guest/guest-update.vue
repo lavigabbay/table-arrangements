@@ -143,6 +143,25 @@
             </div>
           </div>
           <div class="form-group">
+            <label class="form-control-label" v-text="t$('tableArrangmentsApp.guest.accessibility')" for="guest-accessibility"></label>
+            <input
+              type="checkbox"
+              class="form-check"
+              name="accessibility"
+              id="guest-accessibility"
+              data-cy="accessibility"
+              :class="{ valid: !v$.accessibility.$invalid, invalid: v$.accessibility.$invalid }"
+              v-model="v$.accessibility.$model"
+              required
+            />
+            <div v-if="v$.accessibility.$anyDirty && v$.accessibility.$invalid">
+              <small class="form-text text-danger" v-for="error of v$.accessibility.$errors" :key="error.$uid">
+                {{ error.$message }}
+              </small>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label class="form-control-label" v-text="t$('tableArrangmentsApp.guest.event')" for="guest-event"></label>
             <select
               class="form-control"
