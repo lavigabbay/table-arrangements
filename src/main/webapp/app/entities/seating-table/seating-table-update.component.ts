@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { type Ref, computed, defineComponent, inject, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
@@ -19,29 +21,40 @@ export default defineComponent({
     const alertService = inject('alertService', () => useAlertService(), true);
 
     const seatingTable: Ref<ISeatingTable> = ref(new SeatingTable());
-
     const eventService = inject('eventService', () => new EventService());
 
     const events: Ref<IEvent[]> = ref([]);
     const isSaving = ref(false);
-    const currentLanguage = inject('currentLanguage', () => computed(() => navigator.language ?? 'en'), true);
+
+    const currentLanguage = inject(
+      'currentLanguage',
+      () =>
+        computed(() => {
+          const nav = globalThis.navigator as Navigator;
+          return nav?.language ?? 'en';
+        }),
+      true,
+    );
 
     const route = useRoute();
     const router = useRouter();
 
     const previousState = () => router.go(-1);
 
-    const retrieveSeatingTable = async seatingTableId => {
+    const retrieveSeatingTable = async (seatingTableId: number): Promise<void> => {
       try {
         const res = await seatingTableService().find(seatingTableId);
         seatingTable.value = res;
-      } catch (error) {
-        alertService.showHttpError(error.response);
+      } catch (error: unknown) {
+        alertService.showHttpError((error as any)?.response);
       }
     };
 
     if (route.params?.seatingTableId) {
-      retrieveSeatingTable(route.params.seatingTableId);
+      const id = parseInt(route.params.seatingTableId as string, 10);
+      if (!isNaN(id)) {
+        retrieveSeatingTable(id);
+      }
     }
 
     const initRelationships = () => {
@@ -56,6 +69,7 @@ export default defineComponent({
 
     const { t: t$ } = useI18n();
     const validations = useValidation();
+
     const validationRules = {
       tableNumber: {
         required: validations.required(t$('entity.validation.required').toString()),
@@ -67,10 +81,31 @@ export default defineComponent({
       },
       nearStage: {},
       accessibility: {},
-      event: {},
+      event: {
+        required: validations.required(t$('entity.validation.required').toString()),
+      },
     };
+
     const v$ = useVuelidate(validationRules, seatingTable as any);
     v$.value.$validate();
+
+    const save = async (): Promise<void> => {
+      isSaving.value = true;
+      try {
+        if (seatingTable.value.id) {
+          const res = await seatingTableService().update(seatingTable.value);
+          alertService.showInfo(t$('tableArrangmentsApp.seatingTable.updated', { param: res.id }));
+        } else {
+          const res = await seatingTableService().create(seatingTable.value);
+          alertService.showSuccess(t$('tableArrangmentsApp.seatingTable.created', { param: res.id }).toString());
+        }
+        previousState();
+      } catch (error: unknown) {
+        alertService.showHttpError((error as any)?.response);
+      } finally {
+        isSaving.value = false;
+      }
+    };
 
     return {
       seatingTableService,
@@ -82,37 +117,7 @@ export default defineComponent({
       events,
       v$,
       t$,
+      save,
     };
-  },
-  created(): void {},
-  methods: {
-    save(): void {
-      this.isSaving = true;
-      if (this.seatingTable.id) {
-        this.seatingTableService()
-          .update(this.seatingTable)
-          .then(param => {
-            this.isSaving = false;
-            this.previousState();
-            this.alertService.showInfo(this.t$('tableArrangmentsApp.seatingTable.updated', { param: param.id }));
-          })
-          .catch(error => {
-            this.isSaving = false;
-            this.alertService.showHttpError(error.response);
-          });
-      } else {
-        this.seatingTableService()
-          .create(this.seatingTable)
-          .then(param => {
-            this.isSaving = false;
-            this.previousState();
-            this.alertService.showSuccess(this.t$('tableArrangmentsApp.seatingTable.created', { param: param.id }).toString());
-          })
-          .catch(error => {
-            this.isSaving = false;
-            this.alertService.showHttpError(error.response);
-          });
-      }
-    },
   },
 });

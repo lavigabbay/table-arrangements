@@ -82,16 +82,23 @@
           </div>
           <div class="form-group">
             <label class="form-control-label" v-text="t$('tableArrangmentsApp.seatingTable.event')" for="seating-table-event"></label>
-            <select class="form-control" id="seating-table-event" data-cy="event" name="event" v-model="seatingTable.event">
+            <select
+              class="form-control"
+              id="seating-table-event"
+              data-cy="event"
+              name="event"
+              v-model="v$.event.$model"
+              :class="{ valid: !v$.event.$invalid, invalid: v$.event.$invalid }"
+              required
+            >
               <option :value="null"></option>
-              <option
-                :value="seatingTable.event && eventOption.id === seatingTable.event.id ? seatingTable.event : eventOption"
-                v-for="eventOption in events"
-                :key="eventOption.id"
-              >
+              <option v-for="eventOption in events" :key="eventOption.id" :value="eventOption">
                 {{ eventOption.eventName }}
               </option>
             </select>
+            <div v-if="v$.event.$anyDirty && v$.event.$invalid">
+              <small class="form-text text-danger" v-for="error of v$.event.$errors" :key="error.$uid">{{ error.$message }}</small>
+            </div>
           </div>
         </div>
         <div>
