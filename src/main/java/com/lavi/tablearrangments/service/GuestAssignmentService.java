@@ -338,28 +338,10 @@ public class GuestAssignmentService {
 
     private void validateSetup(List<Guest> guests, List<SeatingTable> tables, List<String> warnings) {
         long accessibilityGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getAccessibility())).count();
-        long nearStageGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getNearStage())).count();
-        long groomGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("GROOM")).count();
-        long brideGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("BRIDE")).count();
         long accessibilityTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getAccessibility())).count();
-        long nearStageTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getNearStage())).count();
-
-        int halfTables = tables.size() / 2;
 
         if (accessibilityGuests > accessibilityTables) {
             String msg = "⚠️ Not enough accessible tables: needed " + accessibilityGuests + ", available " + accessibilityTables;
-            warnings.add(msg);
-            log.warn("[Validation] {}", msg);
-        }
-
-        if (nearStageGuests > nearStageTables) {
-            String msg = "⚠️ Not enough near-stage tables: needed " + nearStageGuests + ", available " + nearStageTables;
-            warnings.add(msg);
-            log.warn("[Validation] {}", msg);
-        }
-
-        if (groomGuests > brideGuests + halfTables || brideGuests > groomGuests + halfTables) {
-            String msg = "⚠️ Potential side imbalance: Groom Guests: " + groomGuests + ", Bride Guests: " + brideGuests;
             warnings.add(msg);
             log.warn("[Validation] {}", msg);
         }
