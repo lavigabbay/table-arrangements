@@ -120,4 +120,8 @@ public class GuestGroup {
     public String getRelation() {
         return guests.isEmpty() ? null : guests.get(0).getRelation().name();
     }
+
+    public String getDominantSide() {
+        return this.getGuests().stream().map(Guest::getSide).filter(Objects::nonNull).map(Enum::name).findFirst().orElse(null);
+    }
 }

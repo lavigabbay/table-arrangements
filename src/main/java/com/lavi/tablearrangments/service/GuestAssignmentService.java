@@ -89,7 +89,6 @@ public class GuestAssignmentService {
         int[] minOpenTables = { Integer.MAX_VALUE };
 
         DomainManager domainManager = new DomainManager(guestGroups, allTables);
-        domainManager.applyAC3(); // ניקוי ראשוני של דומיינים
         backtrack(new HashMap<>(), guestGroups, tableStates, bestAssignment, minOpenTables, domainManager);
 
         persistAssignment(bestAssignment);
@@ -134,15 +133,29 @@ public class GuestAssignmentService {
                 bestAssignment.putAll(assignment);
                 log.info("[Step 6] 🥇 New best assignment found with {} open tables.", openTables);
             }
-            return;
         }
 
         log.debug("[Step 6] 🎯 Selecting next group to assign using MRV heuristic...");
         GuestGroup nextGroup = selectGroupWithFewestOptions(groups, assignment, tableStates, domainManager);
 
         if (nextGroup == null || domainManager.getDomain(nextGroup).isEmpty()) {
-            log.warn("❌ No possible tables for group '{}'. Skipping this branch...", nextGroup != null ? nextGroup.getNames() : "UNKNOWN");
-            return; // אין טעם להמשיך, אין אפשרות השמה לקבוצה זו
+            if (nextGroup != null) {
+                log.warn("⚠️ Domain empty after AC-3 for group '{}', restoring full options.", nextGroup.getNames());
+                List<SeatingTable> candidates = tableStates
+                    .values()
+                    .stream()
+                    .map(TableState::getTable)
+                    .filter(t -> t.getMaxSeats() >= nextGroup.getTotalSeats())
+                    .collect(Collectors.toList());
+
+                if (candidates.isEmpty()) {
+                    log.warn("❌ No available tables for group '{}'. Skipping this branch...", nextGroup.getNames());
+                    return;
+                }
+            } else {
+                log.warn("❌ No possible tables for group 'UNKNOWN'. Skipping this branch...");
+                return;
+            }
         }
 
         log.info("[Step 6] 🎯 Selected group: {} ({} seats)", nextGroup.getNames(), nextGroup.getTotalSeats());
@@ -150,79 +163,114 @@ public class GuestAssignmentService {
         // Step 7: Try assigning group to table (Algorithm: Backtracking)
         List<SeatingTable> candidates = new ArrayList<>(domainManager.getDomain(nextGroup));
 
-        candidates = candidates
+        // אם אין מועמדים אחרי AC-3, נ fallback לכל הטבלאות האפשריות:
+        if (candidates.isEmpty()) {
+            log.warn("⚠️ AC-3 eliminated all options for group '{}', falling back to full table list.", nextGroup.getNames());
+            candidates = tableStates
+                .values()
+                .stream()
+                .map(TableState::getTable)
+                .filter(t -> t.getMaxSeats() >= nextGroup.getTotalSeats())
+                .collect(Collectors.toList());
+        }
+
+        candidates = tableStates
+            .values()
             .stream()
-            .filter(ts -> ts.getMaxSeats() >= nextGroup.getTotalSeats())
-            .sorted(Comparator.comparingInt(ts -> calculateDomainReduction(ts, nextGroup, domainManager)))
+            .map(ts -> (TableState) ts) // מוודא שהסטרים עובד עם TableState
+            .filter(ts -> ts.getTable().getMaxSeats() >= nextGroup.getTotalSeats())
+            .sorted(
+                Comparator.comparingInt((TableState ts) -> penaltyCalculator.calculate(ts, nextGroup)).thenComparingInt(ts ->
+                    calculateDomainReduction(ts.getTable(), nextGroup, domainManager)
+                )
+            )
+            .map(TableState::getTable)
             .toList();
 
         if (candidates.isEmpty()) {
-            log.warn("❌ No available tables for group '{}'. Backtracking...", nextGroup.getNames());
-            return;
+            // Fallback – ננסה את כל השולחנות במידה וה־AC-3 מחק יותר מדי
+            candidates = tableStates
+                .values()
+                .stream()
+                .map(TableState::getTable)
+                .filter(t -> t.getMaxSeats() >= nextGroup.getTotalSeats())
+                .collect(Collectors.toList());
+
+            if (candidates.isEmpty()) {
+                log.warn("❌ No available tables for group '{}'. Backtracking...", nextGroup.getNames());
+                return;
+            }
         }
 
         for (SeatingTable table : candidates) {
             TableState ts = tableStates.get(table.getId());
-            log.debug("[Step 7] 🪑 Trying to assign group '{}' to table '{}'.", nextGroup.getNames(), ts.getTable().getTableNumber());
-            ts.assignGroup(nextGroup);
-            assignment.put(nextGroup, ts.getTable());
 
-            assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) + nextGroup.getTotalSeats());
+            // ✨ בדיקות אילוצים לפני השיבוץ בפועל
+            if (ts.canFit(nextGroup) && ts.canAssignGroup(nextGroup)) {
+                log.debug("[Step 7] 🪑 Trying to assign group '{}' to table '{}'.", nextGroup.getNames(), ts.getTable().getTableNumber());
+                ts.assignGroup(nextGroup);
+                assignment.put(nextGroup, ts.getTable());
 
-            domainManager.removeTableFromAllDomains(ts.getTable());
+                assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) + nextGroup.getTotalSeats());
 
-            domainManager.applyAC3(); // Propagation נוסף אחרי כל השמה
+                Map<GuestGroup, Set<SeatingTable>> domainBackup = domainManager.cloneDomains();
+                domainManager.removeTableFromAllDomains(ts.getTable());
+                domainManager.applyAC3();
 
-            assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) + nextGroup.getTotalSeats());
-            domainManager.removeTableFromAllDomains(ts.getTable());
-            domainManager.applyAC3(); // Propagation נוסף אחרי כל השמה
+                boolean skipTable = false;
 
-            // Forward Checking: לוודא שיש עדיין אופציות לשאר הקבוצות
-            if (!isFeasible(groups, assignment, tableStates)) {
-                log.warn("⚠️ Forward Checking failed after assigning group '{}'. Backtracking immediately...", nextGroup.getNames());
-                assignment.remove(nextGroup);
-                ts.removeGroup(nextGroup);
-                assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) - nextGroup.getTotalSeats());
-                continue; // מנסה את השולחן הבא
+                if (domainManager.getDomain(nextGroup).isEmpty()) {
+                    log.warn("⚠️ Domain empty after AC-3 for group '{}', restoring domains and trying next table.", nextGroup.getNames());
+                    domainManager.restoreDomains(domainBackup);
+                    skipTable = true;
+                } else if (!isFeasible(groups, assignment, tableStates)) {
+                    log.warn("⚠️ Forward Checking failed after assigning group '{}'. Backtracking immediately...", nextGroup.getNames());
+                    skipTable = true;
+                }
+
+                if (skipTable) {
+                    assignment.remove(nextGroup);
+                    ts.removeGroup(nextGroup);
+                    assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) - nextGroup.getTotalSeats());
+                } else {
+                    printCurrentAssignments(tableStates);
+                    backtrack(assignment, groups, tableStates, bestAssignment, minOpenTables, domainManager);
+
+                    log.info(
+                        "[Step 8] 🔄 Backtracking: Removing group '{}' from table '{}'.",
+                        nextGroup.getNames(),
+                        ts.getTable().getTableNumber()
+                    );
+                    assignment.remove(nextGroup);
+                    ts.removeGroup(nextGroup);
+                    assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) - nextGroup.getTotalSeats());
+                    printCurrentAssignments(tableStates);
+                }
             }
-
-            printCurrentAssignments(tableStates);
-
-            // Step 8: Check forward feasibility (Algorithm: Forward Checking)
-            if (isFeasible(groups, assignment, tableStates)) {
-                backtrack(assignment, groups, tableStates, bestAssignment, minOpenTables, domainManager);
-            }
-
-            log.info(
-                "[Step 8] 🔄 Backtracking: Removing group '{}' from table '{}'.",
-                nextGroup.getNames(),
-                ts.getTable().getTableNumber()
-            );
-            assignment.remove(nextGroup);
-            ts.removeGroup(nextGroup);
-            assignedSeats.compute(ts.getTable().getId(), (k, v) -> (v == null ? 0 : v) - nextGroup.getTotalSeats());
-
-            printCurrentAssignments(tableStates);
         }
     }
 
     /**
      * Calculates how much assigning a group to a table will reduce the domain of other groups.
-     * Used for LCV (the least Constraining Value) heuristic.
+     * Used as part of the LCV (Least Constraining Value) heuristic to prefer assignments that
+     * leave more options for future group assignments.
+     *
+     * @param table The seating table being considered.
+     * @param group The guest group being assigned.
+     * @param domainManager Manages the domains of possible table assignments for all groups.
+     * @return The number of domain reductions this assignment would cause.
      */
+
     private int calculateDomainReduction(SeatingTable table, GuestGroup group, DomainManager domainManager) {
         int reduction = 0;
         for (GuestGroup otherGroup : domainManager.getAllGroups()) {
-            if (otherGroup.equals(group)) continue;
-
-            Set<SeatingTable> domain = domainManager.getDomain(otherGroup);
-            if (domain == null || domain.isEmpty()) continue;
-
-            if (domain.contains(table)) {
-                reduction++;
+            if (!otherGroup.equals(group)) {
+                Set<SeatingTable> domain = domainManager.getDomain(otherGroup);
+                if (domain != null && !domain.isEmpty() && domain.contains(table)) {
+                    reduction++;
+                }
             }
         }
-
         return reduction; // כמה זה מצמצם את הדומיין של שאר הקבוצות – נעדיף ערכים שמצמצמים פחות
     }
 
@@ -379,7 +427,7 @@ public class GuestAssignmentService {
                 if (options < minOptions) {
                     minOptions = options;
                     bestGroup = group;
-                } else if (options == minOptions && bestGroup != null) {
+                } else if (options == minOptions) {
                     long currentDegree = domainManager.getDomain(group).size();
                     long bestDegree = domainManager.getDomain(bestGroup).size();
                     if (currentDegree > bestDegree) {
@@ -403,28 +451,10 @@ public class GuestAssignmentService {
 
     private void validateSetup(List<Guest> guests, List<SeatingTable> tables, List<String> warnings) {
         long accessibilityGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getAccessibility())).count();
-        long nearStageGuests = guests.stream().filter(g -> Boolean.TRUE.equals(g.getNearStage())).count();
-        long groomGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("GROOM")).count();
-        long brideGuests = guests.stream().filter(g -> g.getSide() != null && g.getSide().name().equals("BRIDE")).count();
         long accessibilityTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getAccessibility())).count();
-        long nearStageTables = tables.stream().filter(t -> Boolean.TRUE.equals(t.getNearStage())).count();
-
-        int halfTables = tables.size() / 2;
 
         if (accessibilityGuests > accessibilityTables) {
             String msg = "⚠️ Not enough accessible tables: needed " + accessibilityGuests + ", available " + accessibilityTables;
-            warnings.add(msg);
-            log.warn("[Validation] {}", msg);
-        }
-
-        if (nearStageGuests > nearStageTables) {
-            String msg = "⚠️ Not enough near-stage tables: needed " + nearStageGuests + ", available " + nearStageTables;
-            warnings.add(msg);
-            log.warn("[Validation] {}", msg);
-        }
-
-        if (groomGuests > brideGuests + halfTables || brideGuests > groomGuests + halfTables) {
-            String msg = "⚠️ Potential side imbalance: Groom Guests: " + groomGuests + ", Bride Guests: " + brideGuests;
             warnings.add(msg);
             log.warn("[Validation] {}", msg);
         }
@@ -606,9 +636,9 @@ public class GuestAssignmentService {
     }
 
     /**
-     * Logs the initial status of all tables, including their maximum seating capacity.
+     * Logs the current status of all tables, including their table number and maximum seating capacity.
      *
-     * @param tables List of seating tables.
+     * @param tables List of seating tables whose status will be printed.
      */
 
     private void printTablesStatus(List<SeatingTable> tables) {
